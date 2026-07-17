@@ -1,0 +1,8 @@
+{
+  "name": "Panimalar College Lab Management System",
+  "description": "A comprehensive college lab monitoring and management system featuring customized workflows, metrics and performance indicators for HOD, Faculty, and Students.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

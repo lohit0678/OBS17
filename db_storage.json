@@ -1,0 +1,2531 @@
+{
+  "students": [
+    {
+      "id": "S101",
+      "name": "Ananya Sharma",
+      "email": "ananya.sharma@student.edu",
+      "facultyId": "F01",
+      "facultyName": "Dr. Ramesh Kumar",
+      "attendance": 92,
+      "subjectAttendance": {
+        "Data Structures Lab": 95,
+        "Algorithms Lab": 90,
+        "Object Oriented Programming Lab": 91
+      },
+      "attendanceHistory": [
+        {
+          "date": "2026-07-01",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-02",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-05",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-06",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-08",
+          "status": "Present"
+        }
+      ],
+      "experiments": [
+        {
+          "id": "exp-1",
+          "name": "Stack Implementation using Arrays & Linked Lists",
+          "dueDate": "2026-07-02",
+          "observationPdfUrl": "obs_stack.pdf",
+          "recordPdfUrl": "rec_stack.pdf",
+          "status": "Approved",
+          "score": 95,
+          "maxScore": 100,
+          "remarks": "Excellent code structuring and analysis.",
+          "submittedAt": "2026-07-01"
+        },
+        {
+          "id": "exp-2",
+          "name": "Queue Operations & Circular Queue implementation",
+          "dueDate": "2026-07-06",
+          "observationPdfUrl": "obs_queue.pdf",
+          "recordPdfUrl": "rec_queue.pdf",
+          "status": "Approved",
+          "score": 90,
+          "maxScore": 100,
+          "remarks": "Good, but try to optimize memory usage.",
+          "submittedAt": "2026-07-05"
+        },
+        {
+          "id": "exp-3",
+          "name": "Singly & Doubly Linked List Operations",
+          "dueDate": "2026-07-10",
+          "observationPdfUrl": "obs_linkedlist.pdf",
+          "recordPdfUrl": "rec_linkedlist.pdf",
+          "status": "Approved",
+          "score": 92,
+          "maxScore": 100,
+          "remarks": "Excellent pointer manipulation logic.",
+          "submittedAt": "2026-07-09"
+        },
+        {
+          "id": "exp-4",
+          "name": "Binary Search Tree Creation & Traversals",
+          "dueDate": "2026-07-14",
+          "observationPdfUrl": "obs_bst.pdf",
+          "recordPdfUrl": "rec_bst.pdf",
+          "status": "Approved",
+          "score": 94,
+          "maxScore": 100,
+          "remarks": "Flawless recursive implementation.",
+          "submittedAt": "2026-07-13"
+        },
+        {
+          "id": "exp-5",
+          "name": "Graph Search Algorithms (BFS & DFS)",
+          "dueDate": "2026-07-18",
+          "observationPdfUrl": "obs_graphs.pdf",
+          "status": "Approved",
+          "score": 88,
+          "maxScore": 100,
+          "remarks": "Neat DFS traversal representation.",
+          "submittedAt": "2026-07-17"
+        },
+        {
+          "id": "exp-6",
+          "name": "Sorting Algorithms (Merge Sort, Quick Sort)",
+          "dueDate": "2026-07-22",
+          "observationPdfUrl": "obs_sorting.pdf",
+          "status": "Submitted - Pending",
+          "score": 0,
+          "maxScore": 100,
+          "submittedAt": "2026-07-21"
+        },
+        {
+          "id": "exp-7",
+          "name": "Hash Table Collision Resolution Techniques",
+          "dueDate": "2026-07-26",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-8",
+          "name": "Minimum Spanning Tree (Kruskal & Prim)",
+          "dueDate": "2026-07-30",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-9",
+          "name": "Shortest Path Routing (Dijkstra's Algorithm)",
+          "dueDate": "2026-08-03",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-10",
+          "name": "Min/Max Heap and Priority Queue Applications",
+          "dueDate": "2026-08-07",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        }
+      ],
+      "assignments": [
+        {
+          "id": "asg-1",
+          "title": "Stack Implementation using Arrays & Linked Lists",
+          "description": "Theory worksheet for Stack implementation.",
+          "dueDate": "2026-07-02",
+          "status": "Graded",
+          "score": 48,
+          "maxScore": 50,
+          "remarks": "Perfect logical diagrams.",
+          "submittedAt": "2026-07-01"
+        },
+        {
+          "id": "asg-2",
+          "title": "Queue Operations & Circular Queue implementation",
+          "description": "Analysis on priority queues and buffer systems.",
+          "dueDate": "2026-07-06",
+          "status": "Graded",
+          "score": 45,
+          "maxScore": 50,
+          "remarks": "Excellent circular array calculations.",
+          "submittedAt": "2026-07-05"
+        },
+        {
+          "id": "asg-3",
+          "title": "Singly & Doubly Linked List Operations",
+          "description": "Write proofs for node deletion complexities.",
+          "dueDate": "2026-07-10",
+          "status": "Graded",
+          "score": 47,
+          "maxScore": 50,
+          "remarks": "Neat and comprehensive.",
+          "submittedAt": "2026-07-09"
+        },
+        {
+          "id": "asg-4",
+          "title": "Binary Search Tree Creation & Traversals",
+          "description": "Worksheet on post-order traversal and BST height.",
+          "dueDate": "2026-07-14",
+          "status": "Graded",
+          "score": 46,
+          "maxScore": 50,
+          "remarks": "Correct height analysis.",
+          "submittedAt": "2026-07-13"
+        },
+        {
+          "id": "asg-5",
+          "title": "Graph Search Algorithms (BFS & DFS)",
+          "description": "Worksheet on queue/stack states during graph traversal.",
+          "dueDate": "2026-07-18",
+          "status": "Submitted",
+          "maxScore": 50,
+          "submittedAt": "2026-07-17"
+        },
+        {
+          "id": "asg-6",
+          "title": "Sorting Algorithms (Merge Sort, Quick Sort)",
+          "description": "Asymptotic comparisons of QuickSort vs MergeSort.",
+          "dueDate": "2026-07-22",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-7",
+          "title": "Hash Table Collision Resolution Techniques",
+          "description": "Worksheet on linear probing vs quadratic probing.",
+          "dueDate": "2026-07-26",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-8",
+          "title": "Minimum Spanning Tree (Kruskal & Prim)",
+          "description": "State differences between Prim and Kruskal search rules.",
+          "dueDate": "2026-07-30",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-9",
+          "title": "Shortest Path Routing (Dijkstra's Algorithm)",
+          "description": "Worksheet on Dijkstra paths for a given routing network.",
+          "dueDate": "2026-08-03",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-10",
+          "title": "Min/Max Heap and Priority Queue Applications",
+          "description": "Formulate priority enqueue operations.",
+          "dueDate": "2026-08-07",
+          "status": "Pending",
+          "maxScore": 50
+        }
+      ],
+      "internalMarks": {
+        "Data Structures Lab": {
+          "cia1": 45,
+          "cia2": 42,
+          "cia3": 46,
+          "practical": 92,
+          "average": 90
+        },
+        "Algorithms Lab": {
+          "cia1": 40,
+          "cia2": 44,
+          "cia3": 43,
+          "practical": 88,
+          "average": 86
+        }
+      },
+      "notifications": [
+        {
+          "id": "n1",
+          "type": "announcement",
+          "title": "Department Circular: Lab Manual Update",
+          "message": "Please download the updated Data Structures Lab manual from the resources portal.",
+          "date": "2026-07-06",
+          "sender": "Dr. Rajesh Sharma (HOD)"
+        },
+        {
+          "id": "n2",
+          "type": "deadline",
+          "title": "Urgent: Assignment 2 Deadline Extension",
+          "message": "The submission deadline for Trees Assignment has been extended to 12th July 2026.",
+          "date": "2026-07-08",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n3",
+          "type": "schedule",
+          "title": "Lab Schedule Update for AI & DS-A1",
+          "message": "The Thursday Algorithms lab will be relocated to Server Lab 2 due to system maintenance.",
+          "date": "2026-07-07",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n4",
+          "type": "exam",
+          "title": "CIA-2 Examination Timetable Released",
+          "message": "The second continuous internal assessment cycle begins on 15th July. Check notice board for full schedule.",
+          "date": "2026-07-05",
+          "sender": "Department Office"
+        }
+      ],
+      "calendarEvents": [
+        {
+          "id": "e1",
+          "title": "Data Structures Midterm Exam",
+          "date": "2026-07-15",
+          "type": "exam",
+          "description": "Theory exam in Room 402."
+        },
+        {
+          "id": "e2",
+          "title": "Graph Algorithms Practical Session",
+          "date": "2026-07-20",
+          "type": "session",
+          "description": "Implementation of Dijkstra and Bellman-Ford."
+        },
+        {
+          "id": "e3",
+          "title": "Observation Submission - Queue Operations",
+          "date": "2026-07-22",
+          "type": "deadline",
+          "description": "Observation submission deadline."
+        },
+        {
+          "id": "e4",
+          "title": "College Symposium Holiday",
+          "date": "2026-08-01",
+          "type": "holiday",
+          "description": "Institutional non-instructional day."
+        },
+        {
+          "id": "e5",
+          "title": "Final Practical External Evaluation",
+          "date": "2026-08-10",
+          "type": "practical",
+          "description": "End-semester external evaluation."
+        }
+      ],
+      "certificates": [
+        {
+          "id": "cert-1",
+          "title": "Full Stack Java Development Workshop",
+          "issuer": "Oracle Academy",
+          "date": "2026-05-10",
+          "type": "workshop"
+        },
+        {
+          "id": "cert-2",
+          "title": "National Level Hackathon Participant",
+          "issuer": "IIT Madras",
+          "date": "2026-06-18",
+          "type": "event"
+        },
+        {
+          "id": "cert-3",
+          "title": "Laboratory Completion Certificate: Data Structures",
+          "issuer": "College AI & DS Dept",
+          "date": "2026-07-02",
+          "type": "completion"
+        }
+      ],
+      "batch": "AI & DS-A1",
+      "labName": "Data Structures & Algorithms Lab",
+      "registerNo": "UR20CS101",
+      "rollNo": "20CS01",
+      "department": "Artificial Intelligence & Data Science",
+      "semester": "4th Semester",
+      "section": "Section A",
+      "phone": "+91 98765 43210",
+      "parentName": "Manoj Sharma",
+      "parentPhone": "+91 98765 43219",
+      "riskFlagged": false
+    },
+    {
+      "id": "S102",
+      "name": "Rahul Verma",
+      "email": "rahul.verma@student.edu",
+      "facultyId": "F01",
+      "facultyName": "Dr. Ramesh Kumar",
+      "attendance": 64,
+      "subjectAttendance": {
+        "Data Structures Lab": 60,
+        "Algorithms Lab": 68,
+        "Object Oriented Programming Lab": 64
+      },
+      "attendanceHistory": [
+        {
+          "date": "2026-07-01",
+          "status": "Absent"
+        },
+        {
+          "date": "2026-07-02",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-05",
+          "status": "Absent"
+        },
+        {
+          "date": "2026-07-06",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-08",
+          "status": "Absent"
+        }
+      ],
+      "experiments": [
+        {
+          "id": "exp-1",
+          "name": "Stack Implementation using Arrays & Linked Lists",
+          "dueDate": "2026-07-02",
+          "observationPdfUrl": "obs_stack2.pdf",
+          "recordPdfUrl": "rec_stack2.pdf",
+          "status": "Approved",
+          "score": 65,
+          "maxScore": 100,
+          "remarks": "Code works but missing edge cases.",
+          "submittedAt": "2026-07-03"
+        },
+        {
+          "id": "exp-2",
+          "name": "Queue Operations & Circular Queue implementation",
+          "dueDate": "2026-07-06",
+          "observationPdfUrl": "obs_queue2.pdf",
+          "status": "Rejected",
+          "score": 0,
+          "maxScore": 100,
+          "remarks": "Code contains syntax errors. Redo and resubmit.",
+          "submittedAt": "2026-07-07"
+        },
+        {
+          "id": "exp-3",
+          "name": "Singly & Doubly Linked List Operations",
+          "dueDate": "2026-07-10",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-4",
+          "name": "Binary Search Tree Creation & Traversals",
+          "dueDate": "2026-07-14",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-5",
+          "name": "Graph Search Algorithms (BFS & DFS)",
+          "dueDate": "2026-07-18",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-6",
+          "name": "Sorting Algorithms (Merge Sort, Quick Sort)",
+          "dueDate": "2026-07-22",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-7",
+          "name": "Hash Table Collision Resolution Techniques",
+          "dueDate": "2026-07-26",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-8",
+          "name": "Minimum Spanning Tree (Kruskal & Prim)",
+          "dueDate": "2026-07-30",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-9",
+          "name": "Shortest Path Routing (Dijkstra's Algorithm)",
+          "dueDate": "2026-08-03",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-10",
+          "name": "Min/Max Heap and Priority Queue Applications",
+          "dueDate": "2026-08-07",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        }
+      ],
+      "assignments": [
+        {
+          "id": "asg-1",
+          "title": "Stack Implementation using Arrays & Linked Lists",
+          "description": "Theory worksheet for Stack implementation.",
+          "dueDate": "2026-07-02",
+          "status": "Graded",
+          "score": 28,
+          "maxScore": 50,
+          "remarks": "Incomplete proofs. Needs improvement.",
+          "submittedAt": "2026-07-06"
+        },
+        {
+          "id": "asg-2",
+          "title": "Queue Operations & Circular Queue implementation",
+          "description": "Analysis on priority queues and buffer systems.",
+          "dueDate": "2026-07-06",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-3",
+          "title": "Singly & Doubly Linked List Operations",
+          "description": "Write proofs for node deletion complexities.",
+          "dueDate": "2026-07-10",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-4",
+          "title": "Binary Search Tree Creation & Traversals",
+          "description": "Worksheet on post-order traversal and BST height.",
+          "dueDate": "2026-07-14",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-5",
+          "title": "Graph Search Algorithms (BFS & DFS)",
+          "description": "Worksheet on queue/stack states during graph traversal.",
+          "dueDate": "2026-07-18",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-6",
+          "title": "Sorting Algorithms (Merge Sort, Quick Sort)",
+          "description": "Asymptotic comparisons of QuickSort vs MergeSort.",
+          "dueDate": "2026-07-22",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-7",
+          "title": "Hash Table Collision Resolution Techniques",
+          "description": "Worksheet on linear probing vs quadratic probing.",
+          "dueDate": "2026-07-26",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-8",
+          "title": "Minimum Spanning Tree (Kruskal & Prim)",
+          "description": "State differences between Prim and Kruskal search rules.",
+          "dueDate": "2026-07-30",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-9",
+          "title": "Shortest Path Routing (Dijkstra's Algorithm)",
+          "description": "Worksheet on Dijkstra paths for a given routing network.",
+          "dueDate": "2026-08-03",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-10",
+          "title": "Min/Max Heap and Priority Queue Applications",
+          "description": "Formulate priority enqueue operations.",
+          "dueDate": "2026-08-07",
+          "status": "Pending",
+          "maxScore": 50
+        }
+      ],
+      "internalMarks": {
+        "Data Structures Lab": {
+          "cia1": 24,
+          "cia2": 28,
+          "cia3": 20,
+          "practical": 55,
+          "average": 44
+        },
+        "Algorithms Lab": {
+          "cia1": 28,
+          "cia2": 30,
+          "cia3": 22,
+          "practical": 60,
+          "average": 50
+        }
+      },
+      "notifications": [
+        {
+          "id": "n1",
+          "type": "announcement",
+          "title": "Department Circular: Lab Manual Update",
+          "message": "Please download the updated Data Structures Lab manual from the resources portal.",
+          "date": "2026-07-06",
+          "sender": "Dr. Rajesh Sharma (HOD)"
+        },
+        {
+          "id": "n2",
+          "type": "deadline",
+          "title": "Urgent: Assignment 2 Deadline Extension",
+          "message": "The submission deadline for Trees Assignment has been extended to 12th July 2026.",
+          "date": "2026-07-08",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n3",
+          "type": "schedule",
+          "title": "Lab Schedule Update for AI & DS-A1",
+          "message": "The Thursday Algorithms lab will be relocated to Server Lab 2 due to system maintenance.",
+          "date": "2026-07-07",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n4",
+          "type": "exam",
+          "title": "CIA-2 Examination Timetable Released",
+          "message": "The second continuous internal assessment cycle begins on 15th July. Check notice board for full schedule.",
+          "date": "2026-07-05",
+          "sender": "Department Office"
+        }
+      ],
+      "calendarEvents": [
+        {
+          "id": "e1",
+          "title": "Data Structures Midterm Exam",
+          "date": "2026-07-15",
+          "type": "exam",
+          "description": "Theory exam in Room 402."
+        },
+        {
+          "id": "e2",
+          "title": "Graph Algorithms Practical Session",
+          "date": "2026-07-20",
+          "type": "session",
+          "description": "Implementation of Dijkstra and Bellman-Ford."
+        },
+        {
+          "id": "e3",
+          "title": "Observation Submission - Queue Operations",
+          "date": "2026-07-22",
+          "type": "deadline",
+          "description": "Observation submission deadline."
+        },
+        {
+          "id": "e4",
+          "title": "College Symposium Holiday",
+          "date": "2026-08-01",
+          "type": "holiday",
+          "description": "Institutional non-instructional day."
+        },
+        {
+          "id": "e5",
+          "title": "Final Practical External Evaluation",
+          "date": "2026-08-10",
+          "type": "practical",
+          "description": "End-semester external evaluation."
+        }
+      ],
+      "certificates": [],
+      "batch": "AI & DS-A1",
+      "labName": "Data Structures & Algorithms Lab",
+      "registerNo": "UR20CS102",
+      "rollNo": "20CS02",
+      "department": "Artificial Intelligence & Data Science",
+      "semester": "4th Semester",
+      "section": "Section A",
+      "phone": "+91 91234 56789",
+      "parentName": "Sanjay Verma",
+      "parentPhone": "+91 91234 56780",
+      "riskFlagged": true,
+      "riskReason": "Critically low overall attendance (64%) and multiple pending/rejected experiment completions."
+    },
+    {
+      "id": "S103",
+      "name": "Sneha Patel",
+      "email": "sneha.patel@student.edu",
+      "facultyId": "F01",
+      "facultyName": "Dr. Ramesh Kumar",
+      "attendance": 88,
+      "subjectAttendance": {
+        "Data Structures Lab": 90,
+        "Algorithms Lab": 86,
+        "Object Oriented Programming Lab": 88
+      },
+      "attendanceHistory": [
+        {
+          "date": "2026-07-01",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-02",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-05",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-06",
+          "status": "Absent"
+        },
+        {
+          "date": "2026-07-08",
+          "status": "Present"
+        }
+      ],
+      "experiments": [
+        {
+          "id": "exp-1",
+          "name": "Stack Implementation using Arrays & Linked Lists",
+          "dueDate": "2026-07-02",
+          "observationPdfUrl": "obs_sneha_1.pdf",
+          "recordPdfUrl": "rec_sneha_1.pdf",
+          "status": "Approved",
+          "score": 85,
+          "maxScore": 100,
+          "remarks": "Well written files.",
+          "submittedAt": "2026-07-02"
+        },
+        {
+          "id": "exp-2",
+          "name": "Queue Operations & Circular Queue implementation",
+          "dueDate": "2026-07-06",
+          "observationPdfUrl": "obs_sneha_2.pdf",
+          "recordPdfUrl": "rec_sneha_2.pdf",
+          "status": "Approved",
+          "score": 88,
+          "maxScore": 100,
+          "remarks": "Completed successfully.",
+          "submittedAt": "2026-07-06"
+        },
+        {
+          "id": "exp-3",
+          "name": "Singly & Doubly Linked List Operations",
+          "dueDate": "2026-07-10",
+          "observationPdfUrl": "obs_sneha_3.pdf",
+          "status": "Submitted - Pending",
+          "score": 0,
+          "maxScore": 100,
+          "submittedAt": "2026-07-10"
+        },
+        {
+          "id": "exp-4",
+          "name": "Binary Search Tree Creation & Traversals",
+          "dueDate": "2026-07-14",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-5",
+          "name": "Graph Search Algorithms (BFS & DFS)",
+          "dueDate": "2026-07-18",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-6",
+          "name": "Sorting Algorithms (Merge Sort, Quick Sort)",
+          "dueDate": "2026-07-22",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-7",
+          "name": "Hash Table Collision Resolution Techniques",
+          "dueDate": "2026-07-26",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-8",
+          "name": "Minimum Spanning Tree (Kruskal & Prim)",
+          "dueDate": "2026-07-30",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-9",
+          "name": "Shortest Path Routing (Dijkstra's Algorithm)",
+          "dueDate": "2026-08-03",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-10",
+          "name": "Min/Max Heap and Priority Queue Applications",
+          "dueDate": "2026-08-07",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        }
+      ],
+      "assignments": [
+        {
+          "id": "asg-1",
+          "title": "Stack Implementation using Arrays & Linked Lists",
+          "description": "Theory worksheet for Stack implementation.",
+          "dueDate": "2026-07-02",
+          "status": "Graded",
+          "score": 40,
+          "maxScore": 50,
+          "remarks": "Good analysis.",
+          "submittedAt": "2026-07-04"
+        },
+        {
+          "id": "asg-2",
+          "title": "Queue Operations & Circular Queue implementation",
+          "description": "Analysis on priority queues and buffer systems.",
+          "dueDate": "2026-07-06",
+          "status": "Graded",
+          "score": 42,
+          "maxScore": 50,
+          "remarks": "Answers are correct.",
+          "submittedAt": "2026-07-06"
+        },
+        {
+          "id": "asg-3",
+          "title": "Singly & Doubly Linked List Operations",
+          "description": "Write proofs for node deletion complexities.",
+          "dueDate": "2026-07-10",
+          "status": "Submitted",
+          "maxScore": 50,
+          "submittedAt": "2026-07-10"
+        },
+        {
+          "id": "asg-4",
+          "title": "Binary Search Tree Creation & Traversals",
+          "description": "Worksheet on post-order traversal and BST height.",
+          "dueDate": "2026-07-14",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-5",
+          "title": "Graph Search Algorithms (BFS & DFS)",
+          "description": "Worksheet on queue/stack states during graph traversal.",
+          "dueDate": "2026-07-18",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-6",
+          "title": "Sorting Algorithms (Merge Sort, Quick Sort)",
+          "description": "Asymptotic comparisons of QuickSort vs MergeSort.",
+          "dueDate": "2026-07-22",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-7",
+          "title": "Hash Table Collision Resolution Techniques",
+          "description": "Worksheet on linear probing vs quadratic probing.",
+          "dueDate": "2026-07-26",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-8",
+          "title": "Minimum Spanning Tree (Kruskal & Prim)",
+          "description": "State differences between Prim and Kruskal search rules.",
+          "dueDate": "2026-07-30",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-9",
+          "title": "Shortest Path Routing (Dijkstra's Algorithm)",
+          "description": "Worksheet on Dijkstra paths for a given routing network.",
+          "dueDate": "2026-08-03",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-10",
+          "title": "Min/Max Heap and Priority Queue Applications",
+          "description": "Formulate priority enqueue operations.",
+          "dueDate": "2026-08-07",
+          "status": "Pending",
+          "maxScore": 50
+        }
+      ],
+      "internalMarks": {
+        "Data Structures Lab": {
+          "cia1": 38,
+          "cia2": 40,
+          "cia3": 41,
+          "practical": 80,
+          "average": 79
+        },
+        "Algorithms Lab": {
+          "cia1": 42,
+          "cia2": 38,
+          "cia3": 39,
+          "practical": 82,
+          "average": 80
+        }
+      },
+      "notifications": [
+        {
+          "id": "n1",
+          "type": "announcement",
+          "title": "Department Circular: Lab Manual Update",
+          "message": "Please download the updated Data Structures Lab manual from the resources portal.",
+          "date": "2026-07-06",
+          "sender": "Dr. Rajesh Sharma (HOD)"
+        },
+        {
+          "id": "n2",
+          "type": "deadline",
+          "title": "Urgent: Assignment 2 Deadline Extension",
+          "message": "The submission deadline for Trees Assignment has been extended to 12th July 2026.",
+          "date": "2026-07-08",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n3",
+          "type": "schedule",
+          "title": "Lab Schedule Update for AI & DS-A1",
+          "message": "The Thursday Algorithms lab will be relocated to Server Lab 2 due to system maintenance.",
+          "date": "2026-07-07",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n4",
+          "type": "exam",
+          "title": "CIA-2 Examination Timetable Released",
+          "message": "The second continuous internal assessment cycle begins on 15th July. Check notice board for full schedule.",
+          "date": "2026-07-05",
+          "sender": "Department Office"
+        }
+      ],
+      "calendarEvents": [
+        {
+          "id": "e1",
+          "title": "Data Structures Midterm Exam",
+          "date": "2026-07-15",
+          "type": "exam",
+          "description": "Theory exam in Room 402."
+        },
+        {
+          "id": "e2",
+          "title": "Graph Algorithms Practical Session",
+          "date": "2026-07-20",
+          "type": "session",
+          "description": "Implementation of Dijkstra and Bellman-Ford."
+        },
+        {
+          "id": "e3",
+          "title": "Observation Submission - Queue Operations",
+          "date": "2026-07-22",
+          "type": "deadline",
+          "description": "Observation submission deadline."
+        },
+        {
+          "id": "e4",
+          "title": "College Symposium Holiday",
+          "date": "2026-08-01",
+          "type": "holiday",
+          "description": "Institutional non-instructional day."
+        },
+        {
+          "id": "e5",
+          "title": "Final Practical External Evaluation",
+          "date": "2026-08-10",
+          "type": "practical",
+          "description": "End-semester external evaluation."
+        }
+      ],
+      "certificates": [
+        {
+          "id": "cert-s1",
+          "title": "Cloud Computing Fundamentals",
+          "issuer": "AWS Academy",
+          "date": "2026-04-12",
+          "type": "workshop"
+        }
+      ],
+      "batch": "AI & DS-A2",
+      "labName": "Data Structures & Algorithms Lab",
+      "registerNo": "UR20CS103",
+      "rollNo": "20CS03",
+      "department": "Artificial Intelligence & Data Science",
+      "semester": "4th Semester",
+      "section": "Section A",
+      "phone": "+91 99887 76655",
+      "parentName": "Dilip Patel",
+      "parentPhone": "+91 99887 76650",
+      "riskFlagged": false
+    },
+    {
+      "id": "S104",
+      "name": "Aditya Iyer",
+      "email": "aditya.iyer@student.edu",
+      "facultyId": "F02",
+      "facultyName": "Prof. Sunita Rao",
+      "attendance": 72,
+      "subjectAttendance": {
+        "DBMS Lab": 70,
+        "Database Administration Lab": 74
+      },
+      "attendanceHistory": [
+        {
+          "date": "2026-07-01",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-02",
+          "status": "Absent"
+        },
+        {
+          "date": "2026-07-05",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-06",
+          "status": "Absent"
+        },
+        {
+          "date": "2026-07-08",
+          "status": "Present"
+        }
+      ],
+      "experiments": [
+        {
+          "id": "exp-1",
+          "name": "Database Creation & SQL DDL Commands",
+          "dueDate": "2026-07-02",
+          "observationPdfUrl": "obs_ddl.pdf",
+          "status": "Approved",
+          "score": 80,
+          "maxScore": 100,
+          "remarks": "Neat schemas.",
+          "submittedAt": "2026-07-02"
+        },
+        {
+          "id": "exp-2",
+          "name": "SQL DML Commands (Insert, Update, Delete)",
+          "dueDate": "2026-07-07",
+          "observationPdfUrl": "obs_dml.pdf",
+          "status": "Approved",
+          "score": 85,
+          "maxScore": 100,
+          "remarks": "Well solved.",
+          "submittedAt": "2026-07-07"
+        },
+        {
+          "id": "exp-3",
+          "name": "Complex Queries using Joins & Subqueries",
+          "dueDate": "2026-07-14",
+          "observationPdfUrl": "obs_complex.pdf",
+          "status": "Submitted - Pending",
+          "score": 0,
+          "maxScore": 100,
+          "submittedAt": "2026-07-12"
+        },
+        {
+          "id": "exp-4",
+          "name": "Aggregate Functions, Group By & Having",
+          "dueDate": "2026-07-18",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-5",
+          "name": "Views, Indexes & Sequence Management",
+          "dueDate": "2026-07-22",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-6",
+          "name": "PL/SQL Blocks & Conditional Statements",
+          "dueDate": "2026-07-26",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-7",
+          "name": "PL/SQL Cursors (Implicit & Explicit)",
+          "dueDate": "2026-07-30",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-8",
+          "name": "Database Triggers & Event Handling",
+          "dueDate": "2026-08-03",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-9",
+          "name": "Stored Procedures & Functions",
+          "dueDate": "2026-08-07",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-10",
+          "name": "NoSQL Database Operations (MongoDB)",
+          "dueDate": "2026-08-11",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        }
+      ],
+      "assignments": [
+        {
+          "id": "asg-1",
+          "title": "Database Creation & SQL DDL Commands",
+          "description": "Design fully normalized ER models.",
+          "dueDate": "2026-07-05",
+          "status": "Graded",
+          "score": 38,
+          "maxScore": 50,
+          "remarks": "Excellent cardinality layout.",
+          "submittedAt": "2026-07-04"
+        },
+        {
+          "id": "asg-2",
+          "title": "SQL DML Commands (Insert, Update, Delete)",
+          "description": "Worksheet on query mapping constraints.",
+          "dueDate": "2026-07-07",
+          "status": "Submitted",
+          "maxScore": 50,
+          "submittedAt": "2026-07-07"
+        },
+        {
+          "id": "asg-3",
+          "title": "Complex Queries using Joins & Subqueries",
+          "description": "Detailed recursive join diagrams.",
+          "dueDate": "2026-07-14",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-4",
+          "title": "Aggregate Functions, Group By & Having",
+          "description": "Theory behind indexing performance benefits.",
+          "dueDate": "2026-07-18",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-5",
+          "title": "Views, Indexes & Sequence Management",
+          "description": "PL/SQL structure schema designs.",
+          "dueDate": "2026-07-22",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-6",
+          "title": "PL/SQL Blocks & Conditional Statements",
+          "description": "Identify cursor exceptions guidelines.",
+          "dueDate": "2026-07-26",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-7",
+          "title": "PL/SQL Cursors (Implicit & Explicit)",
+          "description": "Theory of trigger constraints.",
+          "dueDate": "2026-07-30",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-8",
+          "title": "Database Triggers & Event Handling",
+          "description": "Formulate stored parameter definitions.",
+          "dueDate": "2026-08-03",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-9",
+          "title": "Stored Procedures & Functions",
+          "description": "Workbook on MongoDB collection schemas.",
+          "dueDate": "2026-08-07",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-10",
+          "title": "NoSQL Database Operations (MongoDB)",
+          "description": "Theory of ACID properties in distributed DBs.",
+          "dueDate": "2026-08-11",
+          "status": "Pending",
+          "maxScore": 50
+        }
+      ],
+      "internalMarks": {
+        "DBMS Lab": {
+          "cia1": 35,
+          "cia2": 38,
+          "cia3": 36,
+          "practical": 78,
+          "average": 74
+        }
+      },
+      "notifications": [
+        {
+          "id": "n1",
+          "type": "announcement",
+          "title": "Department Circular: Lab Manual Update",
+          "message": "Please download the updated Data Structures Lab manual from the resources portal.",
+          "date": "2026-07-06",
+          "sender": "Dr. Rajesh Sharma (HOD)"
+        },
+        {
+          "id": "n2",
+          "type": "deadline",
+          "title": "Urgent: Assignment 2 Deadline Extension",
+          "message": "The submission deadline for Trees Assignment has been extended to 12th July 2026.",
+          "date": "2026-07-08",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n3",
+          "type": "schedule",
+          "title": "Lab Schedule Update for AI & DS-A1",
+          "message": "The Thursday Algorithms lab will be relocated to Server Lab 2 due to system maintenance.",
+          "date": "2026-07-07",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n4",
+          "type": "exam",
+          "title": "CIA-2 Examination Timetable Released",
+          "message": "The second continuous internal assessment cycle begins on 15th July. Check notice board for full schedule.",
+          "date": "2026-07-05",
+          "sender": "Department Office"
+        }
+      ],
+      "calendarEvents": [
+        {
+          "id": "e1",
+          "title": "Data Structures Midterm Exam",
+          "date": "2026-07-15",
+          "type": "exam",
+          "description": "Theory exam in Room 402."
+        },
+        {
+          "id": "e2",
+          "title": "Graph Algorithms Practical Session",
+          "date": "2026-07-20",
+          "type": "session",
+          "description": "Implementation of Dijkstra and Bellman-Ford."
+        },
+        {
+          "id": "e3",
+          "title": "Observation Submission - Queue Operations",
+          "date": "2026-07-22",
+          "type": "deadline",
+          "description": "Observation submission deadline."
+        },
+        {
+          "id": "e4",
+          "title": "College Symposium Holiday",
+          "date": "2026-08-01",
+          "type": "holiday",
+          "description": "Institutional non-instructional day."
+        },
+        {
+          "id": "e5",
+          "title": "Final Practical External Evaluation",
+          "date": "2026-08-10",
+          "type": "practical",
+          "description": "End-semester external evaluation."
+        }
+      ],
+      "certificates": [],
+      "batch": "AI & DS-B1",
+      "labName": "Database Management Systems Lab",
+      "registerNo": "UR20CS104",
+      "rollNo": "20CS04",
+      "department": "Artificial Intelligence & Data Science",
+      "semester": "4th Semester",
+      "section": "Section B",
+      "phone": "+91 97766 55443",
+      "parentName": "Venkatesh Iyer",
+      "parentPhone": "+91 97766 55440",
+      "riskFlagged": true,
+      "riskReason": "DBMS Lab Attendance (70%) has slipped below the mandatory 75% department threshold."
+    },
+    {
+      "id": "S105",
+      "name": "Pooja Hegde",
+      "email": "pooja.hegde@student.edu",
+      "facultyId": "F02",
+      "facultyName": "Prof. Sunita Rao",
+      "attendance": 95,
+      "subjectAttendance": {
+        "DBMS Lab": 96,
+        "Database Administration Lab": 94
+      },
+      "attendanceHistory": [
+        {
+          "date": "2026-07-01",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-02",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-05",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-06",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-08",
+          "status": "Present"
+        }
+      ],
+      "experiments": [
+        {
+          "id": "exp-1",
+          "name": "Database Creation & SQL DDL Commands",
+          "dueDate": "2026-07-02",
+          "observationPdfUrl": "obs_pooja_1.pdf",
+          "recordPdfUrl": "rec_pooja_1.pdf",
+          "status": "Approved",
+          "score": 98,
+          "maxScore": 100,
+          "remarks": "Flawless schemas.",
+          "submittedAt": "2026-07-02"
+        },
+        {
+          "id": "exp-2",
+          "name": "SQL DML Commands (Insert, Update, Delete)",
+          "dueDate": "2026-07-07",
+          "observationPdfUrl": "obs_pooja_2.pdf",
+          "recordPdfUrl": "rec_pooja_2.pdf",
+          "status": "Approved",
+          "score": 95,
+          "maxScore": 100,
+          "remarks": "Highly optimized queries.",
+          "submittedAt": "2026-07-07"
+        },
+        {
+          "id": "exp-3",
+          "name": "Complex Queries using Joins & Subqueries",
+          "dueDate": "2026-07-14",
+          "observationPdfUrl": "obs_pooja_3.pdf",
+          "recordPdfUrl": "rec_pooja_3.pdf",
+          "status": "Approved",
+          "score": 96,
+          "maxScore": 100,
+          "remarks": "Excellent triggers implementation.",
+          "submittedAt": "2026-07-11"
+        },
+        {
+          "id": "exp-4",
+          "name": "Aggregate Functions, Group By & Having",
+          "dueDate": "2026-07-18",
+          "observationPdfUrl": "obs_pooja_4.pdf",
+          "recordPdfUrl": "rec_pooja_4.pdf",
+          "status": "Approved",
+          "score": 94,
+          "maxScore": 100,
+          "remarks": "Very clean query structure.",
+          "submittedAt": "2026-07-15"
+        },
+        {
+          "id": "exp-5",
+          "name": "Views, Indexes & Sequence Management",
+          "dueDate": "2026-07-22",
+          "observationPdfUrl": "obs_pooja_5.pdf",
+          "status": "Submitted - Pending",
+          "score": 0,
+          "maxScore": 100,
+          "submittedAt": "2026-07-19"
+        },
+        {
+          "id": "exp-6",
+          "name": "PL/SQL Blocks & Conditional Statements",
+          "dueDate": "2026-07-26",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-7",
+          "name": "PL/SQL Cursors (Implicit & Explicit)",
+          "dueDate": "2026-07-30",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-8",
+          "name": "Database Triggers & Event Handling",
+          "dueDate": "2026-08-03",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-9",
+          "name": "Stored Procedures & Functions",
+          "dueDate": "2026-08-07",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        },
+        {
+          "id": "exp-10",
+          "name": "NoSQL Database Operations (MongoDB)",
+          "dueDate": "2026-08-11",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        }
+      ],
+      "assignments": [
+        {
+          "id": "asg-1",
+          "title": "Database Creation & SQL DDL Commands",
+          "description": "Design fully normalized ER models.",
+          "dueDate": "2026-07-05",
+          "status": "Graded",
+          "score": 48,
+          "maxScore": 50,
+          "remarks": "Top quality layout.",
+          "submittedAt": "2026-07-02"
+        },
+        {
+          "id": "asg-2",
+          "title": "SQL DML Commands (Insert, Update, Delete)",
+          "description": "Worksheet on query mapping constraints.",
+          "dueDate": "2026-07-07",
+          "status": "Graded",
+          "score": 47,
+          "maxScore": 50,
+          "remarks": "Perfect solution.",
+          "submittedAt": "2026-07-07"
+        },
+        {
+          "id": "asg-3",
+          "title": "Complex Queries using Joins & Subqueries",
+          "description": "Detailed recursive join diagrams.",
+          "dueDate": "2026-07-14",
+          "status": "Graded",
+          "score": 46,
+          "maxScore": 50,
+          "remarks": "Highly accurate schema mapping.",
+          "submittedAt": "2026-07-11"
+        },
+        {
+          "id": "asg-4",
+          "title": "Aggregate Functions, Group By & Having",
+          "description": "Theory behind indexing performance benefits.",
+          "dueDate": "2026-07-18",
+          "status": "Submitted",
+          "maxScore": 50,
+          "submittedAt": "2026-07-15"
+        },
+        {
+          "id": "asg-5",
+          "title": "Views, Indexes & Sequence Management",
+          "description": "PL/SQL structure schema designs.",
+          "dueDate": "2026-07-22",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-6",
+          "title": "PL/SQL Blocks & Conditional Statements",
+          "description": "Identify cursor exceptions guidelines.",
+          "dueDate": "2026-07-26",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-7",
+          "title": "PL/SQL Cursors (Implicit & Explicit)",
+          "description": "Theory of trigger constraints.",
+          "dueDate": "2026-07-30",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-8",
+          "title": "Database Triggers & Event Handling",
+          "description": "Formulate stored parameter definitions.",
+          "dueDate": "2026-08-03",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-9",
+          "title": "Stored Procedures & Functions",
+          "description": "Workbook on MongoDB collection schemas.",
+          "dueDate": "2026-08-07",
+          "status": "Pending",
+          "maxScore": 50
+        },
+        {
+          "id": "asg-10",
+          "title": "NoSQL Database Operations (MongoDB)",
+          "description": "Theory of ACID properties in distributed DBs.",
+          "dueDate": "2026-08-11",
+          "status": "Pending",
+          "maxScore": 50
+        }
+      ],
+      "internalMarks": {
+        "DBMS Lab": {
+          "cia1": 48,
+          "cia2": 47,
+          "cia3": 49,
+          "practical": 96,
+          "average": 95
+        }
+      },
+      "notifications": [
+        {
+          "id": "n1",
+          "type": "announcement",
+          "title": "Department Circular: Lab Manual Update",
+          "message": "Please download the updated Data Structures Lab manual from the resources portal.",
+          "date": "2026-07-06",
+          "sender": "Dr. Rajesh Sharma (HOD)"
+        },
+        {
+          "id": "n2",
+          "type": "deadline",
+          "title": "Urgent: Assignment 2 Deadline Extension",
+          "message": "The submission deadline for Trees Assignment has been extended to 12th July 2026.",
+          "date": "2026-07-08",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n3",
+          "type": "schedule",
+          "title": "Lab Schedule Update for AI & DS-A1",
+          "message": "The Thursday Algorithms lab will be relocated to Server Lab 2 due to system maintenance.",
+          "date": "2026-07-07",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n4",
+          "type": "exam",
+          "title": "CIA-2 Examination Timetable Released",
+          "message": "The second continuous internal assessment cycle begins on 15th July. Check notice board for full schedule.",
+          "date": "2026-07-05",
+          "sender": "Department Office"
+        }
+      ],
+      "calendarEvents": [
+        {
+          "id": "e1",
+          "title": "Data Structures Midterm Exam",
+          "date": "2026-07-15",
+          "type": "exam",
+          "description": "Theory exam in Room 402."
+        },
+        {
+          "id": "e2",
+          "title": "Graph Algorithms Practical Session",
+          "date": "2026-07-20",
+          "type": "session",
+          "description": "Implementation of Dijkstra and Bellman-Ford."
+        },
+        {
+          "id": "e3",
+          "title": "Observation Submission - Queue Operations",
+          "date": "2026-07-22",
+          "type": "deadline",
+          "description": "Observation submission deadline."
+        },
+        {
+          "id": "e4",
+          "title": "College Symposium Holiday",
+          "date": "2026-08-01",
+          "type": "holiday",
+          "description": "Institutional non-instructional day."
+        },
+        {
+          "id": "e5",
+          "title": "Final Practical External Evaluation",
+          "date": "2026-08-10",
+          "type": "practical",
+          "description": "End-semester external evaluation."
+        }
+      ],
+      "certificates": [
+        {
+          "id": "cert-p1",
+          "title": "Database Systems Specialization",
+          "issuer": "Coursera / Stanford",
+          "date": "2026-03-25",
+          "type": "symposium"
+        }
+      ],
+      "batch": "AI & DS-B1",
+      "labName": "Database Management Systems Lab",
+      "registerNo": "UR20CS105",
+      "rollNo": "20CS05",
+      "department": "Artificial Intelligence & Data Science",
+      "semester": "4th Semester",
+      "section": "Section B",
+      "phone": "+91 93344 55667",
+      "parentName": "Krishna Hegde",
+      "parentPhone": "+91 93344 55660",
+      "riskFlagged": false
+    },
+    {
+      "id": "S106",
+      "name": "Vikram Seth",
+      "email": "vikram.seth@student.edu",
+      "facultyId": "F03",
+      "facultyName": "Dr. Amit Patel",
+      "attendance": 88,
+      "subjectAttendance": {
+        "Compiler Lab": 90,
+        "Computer Networks Lab": 86
+      },
+      "attendanceHistory": [
+        {
+          "date": "2026-07-01",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-02",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-05",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-06",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-08",
+          "status": "Absent"
+        }
+      ],
+      "experiments": [
+        {
+          "id": "exp-cd1",
+          "name": "Design of Lexical Analyzer using Lex/Flex",
+          "dueDate": "2026-07-02",
+          "observationPdfUrl": "obs_vikram_1.pdf",
+          "recordPdfUrl": "rec_vikram_1.pdf",
+          "status": "Approved",
+          "score": 92,
+          "maxScore": 100,
+          "remarks": "Excellent token parsing.",
+          "submittedAt": "2026-07-01"
+        },
+        {
+          "id": "exp-cd2",
+          "name": "Implementation of Calculator using Yacc/Bison",
+          "dueDate": "2026-07-07",
+          "observationPdfUrl": "obs_vikram_2.pdf",
+          "recordPdfUrl": "rec_vikram_2.pdf",
+          "status": "Approved",
+          "score": 88,
+          "maxScore": 100,
+          "remarks": "Correct grammar specification.",
+          "submittedAt": "2026-07-06"
+        },
+        {
+          "id": "exp-cd3",
+          "name": "Construction of NFA from Regular Expression",
+          "dueDate": "2026-07-14",
+          "status": "Submitted - Pending",
+          "score": 0,
+          "maxScore": 100,
+          "submittedAt": "2026-07-13"
+        }
+      ],
+      "assignments": [
+        {
+          "id": "asg-cd1",
+          "title": "Lexical Analysis Exercises",
+          "description": "Practice regex writing for tokens.",
+          "dueDate": "2026-07-05",
+          "status": "Graded",
+          "score": 44,
+          "maxScore": 50,
+          "remarks": "Good grammar logic.",
+          "submittedAt": "2026-07-04"
+        }
+      ],
+      "internalMarks": {
+        "Compiler Lab": {
+          "cia1": 42,
+          "cia2": 44,
+          "cia3": 40,
+          "practical": 88,
+          "average": 85
+        }
+      },
+      "notifications": [
+        {
+          "id": "n1",
+          "type": "announcement",
+          "title": "Department Circular: Lab Manual Update",
+          "message": "Please download the updated Data Structures Lab manual from the resources portal.",
+          "date": "2026-07-06",
+          "sender": "Dr. Rajesh Sharma (HOD)"
+        },
+        {
+          "id": "n2",
+          "type": "deadline",
+          "title": "Urgent: Assignment 2 Deadline Extension",
+          "message": "The submission deadline for Trees Assignment has been extended to 12th July 2026.",
+          "date": "2026-07-08",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n3",
+          "type": "schedule",
+          "title": "Lab Schedule Update for AI & DS-A1",
+          "message": "The Thursday Algorithms lab will be relocated to Server Lab 2 due to system maintenance.",
+          "date": "2026-07-07",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n4",
+          "type": "exam",
+          "title": "CIA-2 Examination Timetable Released",
+          "message": "The second continuous internal assessment cycle begins on 15th July. Check notice board for full schedule.",
+          "date": "2026-07-05",
+          "sender": "Department Office"
+        }
+      ],
+      "calendarEvents": [
+        {
+          "id": "e1",
+          "title": "Data Structures Midterm Exam",
+          "date": "2026-07-15",
+          "type": "exam",
+          "description": "Theory exam in Room 402."
+        },
+        {
+          "id": "e2",
+          "title": "Graph Algorithms Practical Session",
+          "date": "2026-07-20",
+          "type": "session",
+          "description": "Implementation of Dijkstra and Bellman-Ford."
+        },
+        {
+          "id": "e3",
+          "title": "Observation Submission - Queue Operations",
+          "date": "2026-07-22",
+          "type": "deadline",
+          "description": "Observation submission deadline."
+        },
+        {
+          "id": "e4",
+          "title": "College Symposium Holiday",
+          "date": "2026-08-01",
+          "type": "holiday",
+          "description": "Institutional non-instructional day."
+        },
+        {
+          "id": "e5",
+          "title": "Final Practical External Evaluation",
+          "date": "2026-08-10",
+          "type": "practical",
+          "description": "End-semester external evaluation."
+        }
+      ],
+      "certificates": [],
+      "batch": "AI & DS-C1",
+      "labName": "Compiler Design & Network Lab",
+      "registerNo": "UR20CS106",
+      "rollNo": "20CS06",
+      "department": "Artificial Intelligence & Data Science",
+      "semester": "4th Semester",
+      "section": "Section C",
+      "phone": "+91 94455 66778",
+      "parentName": "Rajendra Seth",
+      "parentPhone": "+91 94455 66770",
+      "riskFlagged": false
+    },
+    {
+      "id": "S107",
+      "name": "Meera Krishnan",
+      "email": "meera.krishnan@student.edu",
+      "facultyId": "F03",
+      "facultyName": "Dr. Amit Patel",
+      "attendance": 74,
+      "subjectAttendance": {
+        "Compiler Lab": 72,
+        "Computer Networks Lab": 76
+      },
+      "attendanceHistory": [
+        {
+          "date": "2026-07-01",
+          "status": "Absent"
+        },
+        {
+          "date": "2026-07-02",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-05",
+          "status": "Absent"
+        },
+        {
+          "date": "2026-07-06",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-08",
+          "status": "Present"
+        }
+      ],
+      "experiments": [
+        {
+          "id": "exp-cd1",
+          "name": "Design of Lexical Analyzer using Lex/Flex",
+          "dueDate": "2026-07-02",
+          "observationPdfUrl": "obs_meera_1.pdf",
+          "recordPdfUrl": "rec_meera_1.pdf",
+          "status": "Approved",
+          "score": 75,
+          "maxScore": 100,
+          "remarks": "Late submission.",
+          "submittedAt": "2026-07-04"
+        },
+        {
+          "id": "exp-cd2",
+          "name": "Implementation of Calculator using Yacc/Bison",
+          "dueDate": "2026-07-07",
+          "status": "Not Submitted",
+          "score": 0,
+          "maxScore": 100
+        }
+      ],
+      "assignments": [
+        {
+          "id": "asg-cd1",
+          "title": "Lexical Analysis Exercises",
+          "description": "Practice regex writing for tokens.",
+          "dueDate": "2026-07-05",
+          "status": "Pending",
+          "maxScore": 50
+        }
+      ],
+      "internalMarks": {
+        "Compiler Lab": {
+          "cia1": 30,
+          "cia2": 32,
+          "cia3": 28,
+          "practical": 72,
+          "average": 65
+        }
+      },
+      "notifications": [
+        {
+          "id": "n1",
+          "type": "announcement",
+          "title": "Department Circular: Lab Manual Update",
+          "message": "Please download the updated Data Structures Lab manual from the resources portal.",
+          "date": "2026-07-06",
+          "sender": "Dr. Rajesh Sharma (HOD)"
+        },
+        {
+          "id": "n2",
+          "type": "deadline",
+          "title": "Urgent: Assignment 2 Deadline Extension",
+          "message": "The submission deadline for Trees Assignment has been extended to 12th July 2026.",
+          "date": "2026-07-08",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n3",
+          "type": "schedule",
+          "title": "Lab Schedule Update for AI & DS-A1",
+          "message": "The Thursday Algorithms lab will be relocated to Server Lab 2 due to system maintenance.",
+          "date": "2026-07-07",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n4",
+          "type": "exam",
+          "title": "CIA-2 Examination Timetable Released",
+          "message": "The second continuous internal assessment cycle begins on 15th July. Check notice board for full schedule.",
+          "date": "2026-07-05",
+          "sender": "Department Office"
+        }
+      ],
+      "calendarEvents": [
+        {
+          "id": "e1",
+          "title": "Data Structures Midterm Exam",
+          "date": "2026-07-15",
+          "type": "exam",
+          "description": "Theory exam in Room 402."
+        },
+        {
+          "id": "e2",
+          "title": "Graph Algorithms Practical Session",
+          "date": "2026-07-20",
+          "type": "session",
+          "description": "Implementation of Dijkstra and Bellman-Ford."
+        },
+        {
+          "id": "e3",
+          "title": "Observation Submission - Queue Operations",
+          "date": "2026-07-22",
+          "type": "deadline",
+          "description": "Observation submission deadline."
+        },
+        {
+          "id": "e4",
+          "title": "College Symposium Holiday",
+          "date": "2026-08-01",
+          "type": "holiday",
+          "description": "Institutional non-instructional day."
+        },
+        {
+          "id": "e5",
+          "title": "Final Practical External Evaluation",
+          "date": "2026-08-10",
+          "type": "practical",
+          "description": "End-semester external evaluation."
+        }
+      ],
+      "certificates": [],
+      "batch": "AI & DS-C1",
+      "labName": "Compiler Design & Network Lab",
+      "registerNo": "UR20CS107",
+      "rollNo": "20CS07",
+      "department": "Artificial Intelligence & Data Science",
+      "semester": "4th Semester",
+      "section": "Section C",
+      "phone": "+91 95566 77889",
+      "parentName": "Gopal Krishnan",
+      "parentPhone": "+91 95566 77880",
+      "riskFlagged": true,
+      "riskReason": "Compiler Lab Attendance (72%) has slipped below the threshold and multiple incomplete lab experiments."
+    },
+    {
+      "id": "S108",
+      "name": "Rajesh Nair",
+      "email": "rajesh.nair@student.edu",
+      "facultyId": "F01",
+      "facultyName": "Dr. Ramesh Kumar",
+      "attendance": 89,
+      "subjectAttendance": {
+        "Data Structures Lab": 90,
+        "Algorithms Lab": 88
+      },
+      "attendanceHistory": [
+        {
+          "date": "2026-07-01",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-02",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-05",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-06",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-08",
+          "status": "Present"
+        }
+      ],
+      "experiments": [
+        {
+          "id": "exp-1",
+          "name": "Stack Implementation using Arrays & Linked Lists",
+          "dueDate": "2026-07-02",
+          "observationPdfUrl": "obs_rajesh_1.pdf",
+          "recordPdfUrl": "rec_rajesh_1.pdf",
+          "status": "Approved",
+          "score": 91,
+          "maxScore": 100,
+          "remarks": "Clean pointers usage.",
+          "submittedAt": "2026-07-02"
+        }
+      ],
+      "assignments": [
+        {
+          "id": "asg-1",
+          "title": "Stack Implementation using Arrays & Linked Lists",
+          "description": "Theory worksheet for Stack implementation.",
+          "dueDate": "2026-07-02",
+          "status": "Graded",
+          "score": 45,
+          "maxScore": 50,
+          "remarks": "Correct designs.",
+          "submittedAt": "2026-07-02"
+        }
+      ],
+      "internalMarks": {
+        "Data Structures Lab": {
+          "cia1": 44,
+          "cia2": 41,
+          "cia3": 45,
+          "practical": 90,
+          "average": 88
+        }
+      },
+      "notifications": [
+        {
+          "id": "n1",
+          "type": "announcement",
+          "title": "Department Circular: Lab Manual Update",
+          "message": "Please download the updated Data Structures Lab manual from the resources portal.",
+          "date": "2026-07-06",
+          "sender": "Dr. Rajesh Sharma (HOD)"
+        },
+        {
+          "id": "n2",
+          "type": "deadline",
+          "title": "Urgent: Assignment 2 Deadline Extension",
+          "message": "The submission deadline for Trees Assignment has been extended to 12th July 2026.",
+          "date": "2026-07-08",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n3",
+          "type": "schedule",
+          "title": "Lab Schedule Update for AI & DS-A1",
+          "message": "The Thursday Algorithms lab will be relocated to Server Lab 2 due to system maintenance.",
+          "date": "2026-07-07",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n4",
+          "type": "exam",
+          "title": "CIA-2 Examination Timetable Released",
+          "message": "The second continuous internal assessment cycle begins on 15th July. Check notice board for full schedule.",
+          "date": "2026-07-05",
+          "sender": "Department Office"
+        }
+      ],
+      "calendarEvents": [
+        {
+          "id": "e1",
+          "title": "Data Structures Midterm Exam",
+          "date": "2026-07-15",
+          "type": "exam",
+          "description": "Theory exam in Room 402."
+        },
+        {
+          "id": "e2",
+          "title": "Graph Algorithms Practical Session",
+          "date": "2026-07-20",
+          "type": "session",
+          "description": "Implementation of Dijkstra and Bellman-Ford."
+        },
+        {
+          "id": "e3",
+          "title": "Observation Submission - Queue Operations",
+          "date": "2026-07-22",
+          "type": "deadline",
+          "description": "Observation submission deadline."
+        },
+        {
+          "id": "e4",
+          "title": "College Symposium Holiday",
+          "date": "2026-08-01",
+          "type": "holiday",
+          "description": "Institutional non-instructional day."
+        },
+        {
+          "id": "e5",
+          "title": "Final Practical External Evaluation",
+          "date": "2026-08-10",
+          "type": "practical",
+          "description": "End-semester external evaluation."
+        }
+      ],
+      "certificates": [],
+      "batch": "AI & DS-A2",
+      "labName": "Data Structures & Algorithms Lab",
+      "registerNo": "UR20CS108",
+      "rollNo": "20CS08",
+      "department": "Artificial Intelligence & Data Science",
+      "semester": "4th Semester",
+      "section": "Section A",
+      "phone": "+91 96677 88990",
+      "parentName": "Sreedharan Nair",
+      "parentPhone": "+91 96677 88991",
+      "riskFlagged": false
+    },
+    {
+      "id": "S109",
+      "name": "Shruti Sen",
+      "email": "shruti.sen@student.edu",
+      "facultyId": "F02",
+      "facultyName": "Prof. Sunita Rao",
+      "attendance": 94,
+      "subjectAttendance": {
+        "DBMS Lab": 95,
+        "Database Administration Lab": 93
+      },
+      "attendanceHistory": [
+        {
+          "date": "2026-07-01",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-02",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-05",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-06",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-08",
+          "status": "Present"
+        }
+      ],
+      "experiments": [
+        {
+          "id": "exp-1",
+          "name": "Database Creation & SQL DDL Commands",
+          "dueDate": "2026-07-02",
+          "observationPdfUrl": "obs_shruti_1.pdf",
+          "recordPdfUrl": "rec_shruti_1.pdf",
+          "status": "Approved",
+          "score": 94,
+          "maxScore": 100,
+          "remarks": "Excellent schemas and tables.",
+          "submittedAt": "2026-07-01"
+        }
+      ],
+      "assignments": [
+        {
+          "id": "asg-1",
+          "title": "Database Creation & SQL DDL Commands",
+          "description": "Design fully normalized ER models.",
+          "dueDate": "2026-07-05",
+          "status": "Graded",
+          "score": 46,
+          "maxScore": 50,
+          "remarks": "Very neat work.",
+          "submittedAt": "2026-07-03"
+        }
+      ],
+      "internalMarks": {
+        "DBMS Lab": {
+          "cia1": 45,
+          "cia2": 44,
+          "cia3": 46,
+          "practical": 94,
+          "average": 92
+        }
+      },
+      "notifications": [
+        {
+          "id": "n1",
+          "type": "announcement",
+          "title": "Department Circular: Lab Manual Update",
+          "message": "Please download the updated Data Structures Lab manual from the resources portal.",
+          "date": "2026-07-06",
+          "sender": "Dr. Rajesh Sharma (HOD)"
+        },
+        {
+          "id": "n2",
+          "type": "deadline",
+          "title": "Urgent: Assignment 2 Deadline Extension",
+          "message": "The submission deadline for Trees Assignment has been extended to 12th July 2026.",
+          "date": "2026-07-08",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n3",
+          "type": "schedule",
+          "title": "Lab Schedule Update for AI & DS-A1",
+          "message": "The Thursday Algorithms lab will be relocated to Server Lab 2 due to system maintenance.",
+          "date": "2026-07-07",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n4",
+          "type": "exam",
+          "title": "CIA-2 Examination Timetable Released",
+          "message": "The second continuous internal assessment cycle begins on 15th July. Check notice board for full schedule.",
+          "date": "2026-07-05",
+          "sender": "Department Office"
+        }
+      ],
+      "calendarEvents": [
+        {
+          "id": "e1",
+          "title": "Data Structures Midterm Exam",
+          "date": "2026-07-15",
+          "type": "exam",
+          "description": "Theory exam in Room 402."
+        },
+        {
+          "id": "e2",
+          "title": "Graph Algorithms Practical Session",
+          "date": "2026-07-20",
+          "type": "session",
+          "description": "Implementation of Dijkstra and Bellman-Ford."
+        },
+        {
+          "id": "e3",
+          "title": "Observation Submission - Queue Operations",
+          "date": "2026-07-22",
+          "type": "deadline",
+          "description": "Observation submission deadline."
+        },
+        {
+          "id": "e4",
+          "title": "College Symposium Holiday",
+          "date": "2026-08-01",
+          "type": "holiday",
+          "description": "Institutional non-instructional day."
+        },
+        {
+          "id": "e5",
+          "title": "Final Practical External Evaluation",
+          "date": "2026-08-10",
+          "type": "practical",
+          "description": "End-semester external evaluation."
+        }
+      ],
+      "certificates": [],
+      "batch": "AI & DS-B2",
+      "labName": "Database Management Systems Lab",
+      "registerNo": "UR20CS109",
+      "rollNo": "20CS09",
+      "department": "Artificial Intelligence & Data Science",
+      "semester": "4th Semester",
+      "section": "Section B",
+      "phone": "+91 97788 99001",
+      "parentName": "Sanjay Sen",
+      "parentPhone": "+91 97788 99000",
+      "riskFlagged": false
+    },
+    {
+      "id": "S110",
+      "name": "Karan Johar",
+      "email": "karan.johar@student.edu",
+      "facultyId": "F01",
+      "facultyName": "Dr. Ramesh Kumar",
+      "attendance": 82,
+      "subjectAttendance": {
+        "Data Structures Lab": 80,
+        "Algorithms Lab": 84
+      },
+      "attendanceHistory": [
+        {
+          "date": "2026-07-01",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-02",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-05",
+          "status": "Absent"
+        },
+        {
+          "date": "2026-07-06",
+          "status": "Present"
+        },
+        {
+          "date": "2026-07-08",
+          "status": "Present"
+        }
+      ],
+      "experiments": [
+        {
+          "id": "exp-1",
+          "name": "Stack Implementation using Arrays & Linked Lists",
+          "dueDate": "2026-07-02",
+          "observationPdfUrl": "obs_karan_1.pdf",
+          "recordPdfUrl": "rec_karan_1.pdf",
+          "status": "Approved",
+          "score": 85,
+          "maxScore": 100,
+          "remarks": "Good implementation.",
+          "submittedAt": "2026-07-02"
+        }
+      ],
+      "assignments": [
+        {
+          "id": "asg-1",
+          "title": "Stack Implementation using Arrays & Linked Lists",
+          "description": "Theory worksheet for Stack implementation.",
+          "dueDate": "2026-07-02",
+          "status": "Graded",
+          "score": 41,
+          "maxScore": 50,
+          "remarks": "Completed well.",
+          "submittedAt": "2026-07-02"
+        }
+      ],
+      "internalMarks": {
+        "Data Structures Lab": {
+          "cia1": 40,
+          "cia2": 38,
+          "cia3": 42,
+          "practical": 82,
+          "average": 80
+        }
+      },
+      "notifications": [
+        {
+          "id": "n1",
+          "type": "announcement",
+          "title": "Department Circular: Lab Manual Update",
+          "message": "Please download the updated Data Structures Lab manual from the resources portal.",
+          "date": "2026-07-06",
+          "sender": "Dr. Rajesh Sharma (HOD)"
+        },
+        {
+          "id": "n2",
+          "type": "deadline",
+          "title": "Urgent: Assignment 2 Deadline Extension",
+          "message": "The submission deadline for Trees Assignment has been extended to 12th July 2026.",
+          "date": "2026-07-08",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n3",
+          "type": "schedule",
+          "title": "Lab Schedule Update for AI & DS-A1",
+          "message": "The Thursday Algorithms lab will be relocated to Server Lab 2 due to system maintenance.",
+          "date": "2026-07-07",
+          "sender": "Dr. Ramesh Kumar"
+        },
+        {
+          "id": "n4",
+          "type": "exam",
+          "title": "CIA-2 Examination Timetable Released",
+          "message": "The second continuous internal assessment cycle begins on 15th July. Check notice board for full schedule.",
+          "date": "2026-07-05",
+          "sender": "Department Office"
+        }
+      ],
+      "calendarEvents": [
+        {
+          "id": "e1",
+          "title": "Data Structures Midterm Exam",
+          "date": "2026-07-15",
+          "type": "exam",
+          "description": "Theory exam in Room 402."
+        },
+        {
+          "id": "e2",
+          "title": "Graph Algorithms Practical Session",
+          "date": "2026-07-20",
+          "type": "session",
+          "description": "Implementation of Dijkstra and Bellman-Ford."
+        },
+        {
+          "id": "e3",
+          "title": "Observation Submission - Queue Operations",
+          "date": "2026-07-22",
+          "type": "deadline",
+          "description": "Observation submission deadline."
+        },
+        {
+          "id": "e4",
+          "title": "College Symposium Holiday",
+          "date": "2026-08-01",
+          "type": "holiday",
+          "description": "Institutional non-instructional day."
+        },
+        {
+          "id": "e5",
+          "title": "Final Practical External Evaluation",
+          "date": "2026-08-10",
+          "type": "practical",
+          "description": "End-semester external evaluation."
+        }
+      ],
+      "certificates": [],
+      "batch": "AI & DS-A1",
+      "labName": "Data Structures & Algorithms Lab",
+      "registerNo": "UR20CS110",
+      "rollNo": "20CS10",
+      "department": "Artificial Intelligence & Data Science",
+      "semester": "4th Semester",
+      "section": "Section A",
+      "phone": "+91 98899 00112",
+      "parentName": "Yash Johar",
+      "parentPhone": "+91 98899 00110",
+      "riskFlagged": false
+    }
+  ],
+  "faculties": [
+    {
+      "id": "F01",
+      "name": "Dr. Ramesh Kumar",
+      "email": "ramesh.kumar@college.edu",
+      "department": "Artificial Intelligence & Data Science",
+      "labName": "Data Structures & Algorithms Lab",
+      "batch": "AI & DS-A",
+      "subjectsHandled": [
+        "Data Structures",
+        "Analysis of Algorithms",
+        "Advanced Coding Lab"
+      ],
+      "experience": "12 Years",
+      "workloadHours": 16,
+      "performanceScore": 92,
+      "timetable": [
+        {
+          "day": "Monday",
+          "time": "09:00 AM - 11:00 AM",
+          "lab": "Data Structures Lab",
+          "batch": "AI & DS-A1",
+          "room": "Lab 3"
+        },
+        {
+          "day": "Wednesday",
+          "time": "11:15 AM - 01:15 PM",
+          "lab": "Data Structures Lab",
+          "batch": "AI & DS-A2",
+          "room": "Lab 3"
+        },
+        {
+          "day": "Thursday",
+          "time": "02:00 PM - 04:00 PM",
+          "lab": "Algorithms Lab",
+          "batch": "AI & DS-A1",
+          "room": "Lab 4"
+        }
+      ],
+      "profilePic": "data:image/jpeg;base64,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"
+    },
+    {
+      "id": "F02",
+      "name": "Prof. Sunita Rao",
+      "email": "sunita.rao@college.edu",
+      "department": "Artificial Intelligence & Data Science",
+      "labName": "Database Management Systems Lab",
+      "batch": "AI & DS-B",
+      "subjectsHandled": [
+        "Database Management Systems",
+        "NoSQL Databases",
+        "SQL Lab"
+      ],
+      "experience": "9 Years",
+      "workloadHours": 14,
+      "performanceScore": 86,
+      "timetable": [
+        {
+          "day": "Tuesday",
+          "time": "09:00 AM - 11:00 AM",
+          "lab": "DBMS Lab",
+          "batch": "AI & DS-B1",
+          "room": "Lab 1"
+        },
+        {
+          "day": "Wednesday",
+          "time": "02:00 PM - 04:00 PM",
+          "lab": "DBMS Lab",
+          "batch": "AI & DS-B2",
+          "room": "Lab 1"
+        },
+        {
+          "day": "Friday",
+          "time": "11:15 AM - 01:15 PM",
+          "lab": "Database Administration Lab",
+          "batch": "AI & DS-B1",
+          "room": "Lab 2"
+        }
+      ]
+    },
+    {
+      "id": "F03",
+      "name": "Dr. Amit Patel",
+      "email": "amit.patel@college.edu",
+      "department": "Artificial Intelligence & Data Science",
+      "labName": "Compiler Design & Network Lab",
+      "batch": "AI & DS-C",
+      "subjectsHandled": [
+        "Compiler Design",
+        "Computer Networks",
+        "Network Simulation Lab"
+      ],
+      "experience": "15 Years",
+      "workloadHours": 18,
+      "performanceScore": 78,
+      "timetable": [
+        {
+          "day": "Monday",
+          "time": "11:15 AM - 01:15 PM",
+          "lab": "Compiler Lab",
+          "batch": "AI & DS-C1",
+          "room": "Lab 5"
+        },
+        {
+          "day": "Tuesday",
+          "time": "02:00 PM - 04:00 PM",
+          "lab": "Computer Networks Lab",
+          "batch": "AI & DS-C2",
+          "room": "Lab 5"
+        },
+        {
+          "day": "Thursday",
+          "time": "09:00 AM - 11:00 AM",
+          "lab": "Compiler Lab",
+          "batch": "AI & DS-C2",
+          "room": "Lab 5"
+        }
+      ]
+    }
+  ]
+}
