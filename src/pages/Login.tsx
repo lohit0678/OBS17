@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ShieldAlert, Mail, Lock, Sparkles, ArrowLeft, CheckCircle } from 'lucide-react';
 import collegeLogo from '../assets/images/panimalar_logo_final_1783767831926.jpg';
+import entranceBg from '../assets/images/panimalar_user_entrance.png';
 
 export default function Login() {
   const { login, register, loginWithGoogle } = useAuth();
@@ -143,7 +144,15 @@ export default function Login() {
   };
 
   return (
-    <div className="relative min-h-screen flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 bg-gradient-to-tr from-blue-950 via-[#0B192C] to-slate-900 overflow-hidden">
+    <div className="relative min-h-screen flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 bg-slate-950 overflow-hidden">
+      {/* Panimalar Engineering College Entrance Background Photo */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-transform duration-1000 scale-100"
+        style={{ backgroundImage: `url(${entranceBg})` }}
+      />
+      {/* Semi-transparent dark overlay to showcase the college entrance gate clearly while preserving text contrast */}
+      <div className="absolute inset-0 bg-gradient-to-b from-slate-950/80 via-slate-900/65 to-slate-950/85 backdrop-blur-[1px]" />
+
       {/* Ambient Blue Glow Orbs */}
       <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl pointer-events-none"></div>
       <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none"></div>
@@ -159,10 +168,10 @@ export default function Login() {
           />
         </div>
         <h2 className="mt-4 text-3xl font-extrabold text-white tracking-tight">
-          AI & DS Portal
+          Laboratory Management
         </h2>
         <p className="mt-1.5 text-sm font-bold text-blue-400">
-          Departmental Laboratory & Academic Record ERP
+          Academic Laboratory Record & Student Journal ERP
         </p>
       </div>
 
@@ -365,66 +374,10 @@ export default function Login() {
               </div>
             </div>
           )}
-
-          {/* Demo access profiles */}
-          {!isRegister && (
-            <div className="mt-6 border-t border-slate-100 pt-5">
-              <div className="flex items-center gap-1.5 justify-center mb-3">
-                <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Demo Access Profiles</span>
-              </div>
-
-              <div className="grid grid-cols-1 gap-2">
-                {/* HOD Credentials (Admin ID and HOD Email) */}
-                <button
-                  type="button"
-                  onClick={() => fillDemoCredentials('admin', 'Hod@Admin123')}
-                  className="flex items-center gap-3 px-4 py-2.5 bg-slate-50 border border-blue-100 hover:border-blue-200 hover:bg-blue-50/20 text-left rounded-xl transition-all cursor-pointer group"
-                >
-                  <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-800">HOD Admin Login (Admin ID)</p>
-                    <p className="text-[10px] text-slate-400 font-medium">admin / Hod@Admin123</p>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => fillDemoCredentials('hod@college.edu', 'Hod@Admin123')}
-                  className="flex items-center gap-3 px-4 py-2.5 bg-slate-50 border border-blue-100 hover:border-blue-200 hover:bg-blue-50/20 text-left rounded-xl transition-all cursor-pointer group"
-                >
-                  <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" /></svg>
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-800">HOD Email Login</p>
-                    <p className="text-[10px] text-slate-400 font-medium">hod@college.edu / Hod@Admin123</p>
-                  </div>
-                </button>
-
-                {/* Faculty Credentials */}
-                <button
-                  type="button"
-                  onClick={() => fillDemoCredentials('ramesh.kumar@college.edu')}
-                  className="flex items-center gap-3 px-4 py-2.5 bg-slate-50 border border-slate-200 hover:border-blue-200 hover:bg-blue-50/20 text-left rounded-xl transition-all cursor-pointer group"
-                >
-                  <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-800">Dr. Ramesh Kumar (Faculty)</p>
-                    <p className="text-[10px] text-slate-400 font-medium">ramesh.kumar@college.edu / password</p>
-                  </div>
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Google Authentication Simulator Modal */}
+      {/* Google Authentication Modal */}
       {showGooglePopup && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-100 flex flex-col">
@@ -436,50 +389,64 @@ export default function Login() {
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.85c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
               </svg>
               <h3 className="text-lg font-black text-slate-850">Sign in with Google</h3>
-              <p className="text-xs text-slate-500 mt-1">to continue to college.edu AI & DS ERP portal</p>
+              <p className="text-xs text-slate-500 mt-1">Select your approved institutional Google account</p>
             </div>
 
-            <div className="p-6 space-y-4 max-h-[300px] overflow-y-auto">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Select Google Account</span>
+            <div className="p-6 space-y-4 max-h-[320px] overflow-y-auto">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">HOD Pre-Approved Google Accounts</span>
               
               <div className="space-y-2">
                 <button
                   type="button"
                   onClick={() => handleGoogleAuthSelect('ramesh.kumar@college.edu', 'Dr. Ramesh Kumar')}
-                  className="w-full flex items-center gap-3 p-3 rounded-2xl border border-slate-100 hover:border-blue-400 hover:bg-blue-50/10 text-left transition-all cursor-pointer"
+                  className="w-full flex items-center gap-3 p-3 rounded-2xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/20 text-left transition-all cursor-pointer group"
                 >
-                  <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-black uppercase text-sm">R</div>
+                  <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-black uppercase text-xs">R</div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-slate-800">Dr. Ramesh Kumar</p>
                     <p className="text-[10px] text-slate-400 font-semibold truncate">ramesh.kumar@college.edu</p>
                   </div>
+                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-md text-[9px] font-bold">Approved</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleGoogleAuthSelect('suresh.v@college.edu', 'Dr. Suresh V')}
+                  className="w-full flex items-center gap-3 p-3 rounded-2xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/20 text-left transition-all cursor-pointer group"
+                >
+                  <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-black uppercase text-xs">S</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-slate-800">Dr. Suresh V</p>
+                    <p className="text-[10px] text-slate-400 font-semibold truncate">suresh.v@college.edu</p>
+                  </div>
+                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-md text-[9px] font-bold">Approved</span>
                 </button>
 
                 <div className="pt-3 border-t border-slate-100 space-y-3">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Use custom Google Account</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Enter another Google Email</span>
                   
                   <div className="space-y-2">
                     <input
                       type="text"
-                      placeholder="Google Full Name"
+                      placeholder="Full Name"
                       value={googleCustomName}
                       onChange={(e) => setGoogleCustomName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-medium"
+                      className="w-full px-3.5 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
                     />
                     <input
                       type="email"
-                      placeholder="google@college.edu"
+                      placeholder="your.email@college.edu"
                       value={googleCustomEmail}
                       onChange={(e) => setGoogleCustomEmail(e.target.value)}
-                      className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-medium"
+                      className="w-full px-3.5 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
                     />
                     <button
                       type="button"
                       disabled={!googleCustomEmail}
-                      onClick={() => handleGoogleAuthSelect(googleCustomEmail, googleCustomName || 'Google Colleague')}
-                      className="w-full py-2.5 bg-[#4285F4] hover:bg-blue-600 text-white text-xs font-bold rounded-xl transition cursor-pointer disabled:opacity-50"
+                      onClick={() => handleGoogleAuthSelect(googleCustomEmail, googleCustomName || 'Faculty Colleague')}
+                      className="w-full py-2 bg-[#4285F4] hover:bg-blue-600 text-white text-xs font-bold rounded-xl transition cursor-pointer disabled:opacity-50"
                     >
-                      Sign In with Custom Google account
+                      Authenticate with Google
                     </button>
                   </div>
                 </div>
@@ -492,7 +459,7 @@ export default function Login() {
                 onClick={() => setShowGooglePopup(false)}
                 className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-800 transition cursor-pointer"
               >
-                Cancel Google Sign-In
+                Cancel
               </button>
             </div>
           </div>

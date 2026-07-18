@@ -57,24 +57,15 @@ export default function HodStudents() {
       </div>
 
       {/* Mini Rollup Stats Widgets */}
+      {/* Mini Rollup Stats Widgets */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total AI & DS</span>
-            <strong className="text-xl font-bold text-slate-800">{totalCount} Students</strong>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Students</span>
+            <strong className="text-xl font-bold text-slate-800">{totalCount} Enrolled</strong>
           </div>
           <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-600">
             <GraduationCap className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
-          <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Flagged At-Risk</span>
-            <strong className="text-xl font-bold text-rose-600">{flaggedCount} Students</strong>
-          </div>
-          <div className="p-2.5 rounded-xl bg-rose-50 text-rose-600">
-            <AlertTriangle className="w-5 h-5" />
           </div>
         </div>
 
@@ -109,44 +100,10 @@ export default function HodStudents() {
         </div>
       </div>
 
-      {/* Tab Filter Links */}
-      <div className="flex border-b border-slate-200">
-        <button
-          onClick={() => setActiveTab('All')}
-          className={`px-5 py-3 text-xs font-bold tracking-wider uppercase border-b-2 transition-all cursor-pointer ${
-            activeTab === 'All'
-              ? 'border-[#0B192C] text-[#0B192C]'
-              : 'border-transparent text-slate-400 hover:text-slate-600'
-          }`}
-        >
-          All Students ({totalCount})
-        </button>
-        <button
-          onClick={() => setActiveTab('At-Risk')}
-          className={`px-5 py-3 text-xs font-bold tracking-wider uppercase border-b-2 transition-all cursor-pointer ${
-            activeTab === 'At-Risk'
-              ? 'border-rose-500 text-rose-600'
-              : 'border-transparent text-slate-400 hover:text-rose-500'
-          }`}
-        >
-          Flagged At-Risk ({flaggedCount})
-        </button>
-        <button
-          onClick={() => setActiveTab('On-Track')}
-          className={`px-5 py-3 text-xs font-bold tracking-wider uppercase border-b-2 transition-all cursor-pointer ${
-            activeTab === 'On-Track'
-              ? 'border-emerald-500 text-emerald-600'
-              : 'border-transparent text-slate-400 hover:text-emerald-500'
-          }`}
-        >
-          On Track ({onTrackCount})
-        </button>
-      </div>
-
       {/* Roster Table */}
       <DataTable<Student>
-        headers={['Student Name', 'ID & Reg No', 'Assigned Advisor', 'Lab Course', 'Attendance', 'Observation Notebook %', 'Record Notebook %', 'Risk Standing', 'Action']}
-        data={filteredStudents}
+        headers={['Student Name', 'ID & Reg No', 'Batch & Section', 'Assigned Advisor', 'Lab Course', 'Attendance', 'Observation Notebook %', 'Record Notebook %', 'Action']}
+        data={students}
         searchPlaceholder="Search all department student profiles..."
         searchField="name"
         onRowClick={(student) => navigate(`/hod/students/${student.id}`)}
@@ -175,6 +132,15 @@ export default function HodStudents() {
                   <p className="text-[10px] text-slate-400 font-extrabold uppercase">ID: {student.id}</p>
                 </div>
               </td>
+              {/* Batch & Section */}
+              <td className="px-6 py-4">
+                <div>
+                  <span className="px-2 py-0.5 bg-slate-100 text-slate-800 border border-slate-200 rounded font-bold text-xs">
+                    {student.section ? `Sec ${student.section}` : student.batch}
+                  </span>
+                  <p className="text-[10px] text-slate-400 font-medium mt-0.5">{student.batch}</p>
+                </div>
+              </td>
               {/* Advisor */}
               <td className="px-6 py-4 text-xs font-semibold text-indigo-600">
                 {student.facultyName}
@@ -185,7 +151,7 @@ export default function HodStudents() {
               </td>
               {/* Attendance */}
               <td className="px-6 py-4 text-center text-xs font-extrabold text-slate-700">
-                <span className={student.attendance >= 75 ? 'text-emerald-600' : 'text-rose-600'}>
+                <span className={student.attendance >= 75 ? 'text-emerald-600' : 'text-slate-600'}>
                   {student.attendance}%
                 </span>
               </td>
@@ -197,10 +163,7 @@ export default function HodStudents() {
               <td className="px-6 py-4 text-center text-xs font-bold text-indigo-600">
                 {asgRate}%
               </td>
-              {/* Risk */}
-              <td className="px-6 py-4">
-                <RiskBadge isAtRisk={student.riskFlagged} reason={student.riskReason} compact={true} />
-              </td>
+              {/* Action */}
               {/* Action */}
               <td className="px-6 py-4 text-right">
                 <button className="px-2.5 py-1 bg-slate-50 border border-slate-200 hover:bg-indigo-50 hover:text-indigo-600 text-slate-500 rounded-lg text-[10px] font-bold cursor-pointer transition">

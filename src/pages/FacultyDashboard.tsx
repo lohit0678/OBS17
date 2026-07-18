@@ -34,6 +34,7 @@ import {
   ChevronDown,
   Calendar
 } from 'lucide-react';
+import { Bell } from 'lucide-react';
 
 // Define the 12 Lab Exercises mapped to 6 Weeks
 const LAB_EXERCISES = [
@@ -365,6 +366,67 @@ export default function FacultyDashboard() {
           </div>
         </div>
       </div>
+
+      {/* LAB SESSION NOTIFICATION BANNER */}
+      {(() => {
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const today = days[new Date().getDay()];
+        const todaySessions = (facultyData.timetable || []).filter(
+          (slot: any) => slot.day?.toLowerCase() === today.toLowerCase()
+        );
+
+        // Request browser notification permission and send notification
+        if (todaySessions.length > 0 && typeof window !== 'undefined' && 'Notification' in window) {
+          if (Notification.permission === 'default') {
+            Notification.requestPermission();
+          }
+          // Send notification only once per session (use sessionStorage to track)
+          const notifKey = `lab-notif-${user.id}-${today}`;
+          if (Notification.permission === 'granted' && !sessionStorage.getItem(notifKey)) {
+            sessionStorage.setItem(notifKey, 'sent');
+            todaySessions.forEach((slot: any) => {
+              new Notification(`Lab Session Today - ${slot.lab || 'Lab'}`, {
+                body: `${slot.time} \u2022 ${slot.batch} \u2022 Room: ${slot.room}`,
+                icon: '/favicon.ico',
+              });
+            });
+          }
+        }
+
+        if (todaySessions.length === 0) return null;
+        return (
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-amber-100 text-amber-700 rounded-xl shrink-0 mt-0.5">
+                <Bell className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-sm font-extrabold text-amber-900 flex items-center gap-2">
+                  Active Lab Session{todaySessions.length > 1 ? 's' : ''} Today
+                  <span className="inline-flex items-center justify-center w-5 h-5 bg-amber-600 text-white rounded-full text-[10px] font-black">
+                    {todaySessions.length}
+                  </span>
+                </h4>
+                <div className="mt-2 space-y-1.5">
+                  {todaySessions.map((slot: any, i: number) => (
+                    <div key={i} className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="px-2 py-0.5 bg-amber-200/60 text-amber-900 rounded-lg font-bold">{slot.time}</span>
+                      <span className="font-bold text-slate-700">{slot.lab || 'Lab Session'}</span>
+                      <span className="text-slate-400">&bull;</span>
+                      <span className="text-slate-600">Batch: <strong>{slot.batch}</strong></span>
+                      <span className="text-slate-400">&bull;</span>
+                      <span className="text-slate-600">Room: <strong>{slot.room}</strong></span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-amber-600 mt-2 font-medium">
+                  Browser notifications enabled • You will be alerted for upcoming sessions.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
 
 

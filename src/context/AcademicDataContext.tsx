@@ -24,6 +24,13 @@ interface AcademicDataContextType {
   refreshData: () => Promise<void>;
   addPreApprovedFaculty: (data: { email: string; phone?: string; labName: string; subject: string; subjectCode: string; batch: string; sections: string }) => Promise<{ success: boolean; error?: string }>;
   changeAdminPassword: (oldPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  uploadExcelProvisioning: (file: File, manualDefaults?: Record<string, string>) => Promise<{ success: boolean; summary?: any; error?: string }>;
+  deleteFaculty: (facultyId: string) => Promise<{ success: boolean; error?: string }>;
+  manualProvisionData: (data: any) => Promise<{ success: boolean; error?: string }>;
+  uploadProfilePic: (file: File) => Promise<{ success: boolean; profilePic?: string; error?: string }>;
+  clearFacultyData: (facultyId: string) => Promise<{ success: boolean; error?: string }>;
+  theme: 'light' | 'dark';
+  toggleTheme: () => void;
 }
 
 const AcademicDataContext = createContext<AcademicDataContextType | undefined>(undefined);
@@ -32,7 +39,16 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
   const [students, setStudents] = useState<Student[]>([]);
   const [faculties, setFaculties] = useState<Faculty[]>([]);
   const [loading, setLoading] = useState(true);
-  const { getAuthHeaders, user } = useAuth();
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    return (localStorage.getItem('app_theme') as 'light' | 'dark') || 'light';
+  });
+  const { getAuthHeaders, user, updateProfilePic: authUpdateProfilePic } = useAuth();
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(nextTheme);
+    localStorage.setItem('app_theme', nextTheme);
+  };
 
   const authFetch = async (url: string, options: RequestInit = {}) => {
     const headers = getAuthHeaders();
@@ -339,6 +355,126 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // ── Excel Upload Provisioning ────────────────────────────────────────────────
+  const uploadExcelProvisioning = async (file: File, manualDefaults?: Record<string, string>): Promise<{ success: boolean; summary?: any; error?: string }> => {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      if (manualDefaults) {
+        Object.entries(manualDefaults).forEach(([key, val]) => {
+          if (val) formData.append(key, val);
+        });
+      }
+      const headers: Record<string, string> = {};
+      if (user.token) headers["Authorization"] = `Bearer ${user.token}`;
+
+      const res = await fetch("/api/academic/upload-excel", {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.faculties) setFaculties(data.faculties);
+        if (data.students) setStudents(data.students);
+        return { success: true, summary: data.summary };
+      }
+      const err = await res.json();
+      return { success: false, error: err.error };
+    } catch (err) {
+      console.error("Excel upload failed:", err);
+      return { success: false, error: "Excel upload failed due to network error." };
+    }
+  };
+
+  // ── Delete Faculty ──────────────────────────────────────────────────────────
+  const deleteFaculty = async (facultyId: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await authFetch(`/api/hod/faculty/${facultyId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.faculties) setFaculties(data.faculties);
+        return { success: true };
+      }
+      const err = await res.json();
+      return { success: false, error: err.error };
+    } catch (err) {
+      console.error("Delete faculty failed:", err);
+      return { success: false, error: "Delete faculty failed due to network error." };
+    }
+  };
+
+  // ── Clear Faculty Data (Reset Timetable & Subjects for fresh upload) ─────────
+  const clearFacultyData = async (facultyId: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await authFetch(`/api/hod/faculty/${facultyId}/clear-data`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.faculties) setFaculties(data.faculties);
+        if (data.students) setStudents(data.students);
+        return { success: true };
+      }
+      const err = await res.json();
+      return { success: false, error: err.error };
+    } catch (err) {
+      console.error("Clear faculty data failed:", err);
+      return { success: false, error: "Clear faculty data failed due to network error." };
+    }
+  };
+
+  // ── Manual Provision Data ───────────────────────────────────────────────────
+  const manualProvisionData = async (data: any): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await authFetch("/api/hod/manual-provision", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        if (result.faculties) setFaculties(result.faculties);
+        if (result.students) setStudents(result.students);
+        return { success: true };
+      }
+      const err = await res.json();
+      return { success: false, error: err.error };
+    } catch (err) {
+      console.error("Manual provision failed:", err);
+      return { success: false, error: "Manual provision failed due to network error." };
+    }
+  };
+
+  // ── Profile Picture Upload ──────────────────────────────────────────────────
+  const uploadProfilePic = async (file: File): Promise<{ success: boolean; profilePic?: string; error?: string }> => {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const headers: Record<string, string> = {};
+      if (user.token) headers["Authorization"] = `Bearer ${user.token}`;
+
+      const res = await fetch("/api/user/profile-pic", {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.profilePic && authUpdateProfilePic) {
+          await authUpdateProfilePic(data.profilePic);
+        }
+        return { success: true, profilePic: data.profilePic };
+      }
+      const err = await res.json();
+      return { success: false, error: err.error };
+    } catch (err) {
+      console.error("Profile pic upload failed:", err);
+      return { success: false, error: "Profile pic upload failed due to network error." };
+    }
+  };
+
   // ── Derived helpers ──────────────────────────────────────────────────────────
   const getDepartmentMetrics = () => calculateDepartmentMetrics(students, faculties);
   const getFacultyData = (facultyId: string) => faculties.find((f) => f.id === facultyId);
@@ -380,6 +516,13 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
         refreshData,
         addPreApprovedFaculty,
         changeAdminPassword,
+        uploadExcelProvisioning,
+        deleteFaculty,
+        clearFacultyData,
+        manualProvisionData,
+        uploadProfilePic,
+        theme,
+        toggleTheme,
       }}
     >
       {children}
