@@ -1,0 +1,735 @@
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { Student, Faculty, calculateDepartmentMetrics } from '../data';
+import { useAuth } from './AuthContext';
+import { getSocket, disconnectSocket } from '../socket';
+
+interface AcademicDataContextType {
+  students: Student[];
+  faculties: Faculty[];
+  setStudents: React.Dispatch<React.SetStateAction<Student[]>>;
+  setFaculties: React.Dispatch<React.SetStateAction<Faculty[]>>;
+  updateStudentAttendance: (studentId: string, date: string, status: 'Present' | 'Absent' | 'On Duty', subjectCode?: string, subjectName?: string) => Promise<void>;
+  updateBatchStudentAttendance: (items: { studentId: string; status: 'Present' | 'Absent' | 'On Duty' }[], date: string, subjectCode?: string, subjectName?: string) => Promise<void>;
+  submitLabExperiment: (studentId: string, experimentId: string, observationFile?: string, recordFile?: string) => void;
+  updateLabSubmissionStatus: (studentId: string, experimentId: string, status: 'Approved' | 'Pending' | 'Rejected' | 'Submitted - Pending', score: number, remarks?: string) => void;
+  submitAssignment: (studentId: string, assignmentId: string, filename: string) => void;
+  gradeAssignment: (studentId: string, assignmentId: string, score: number, remarks: string) => void;
+  createAssignment: (facultyId: string, title: string, description: string, dueDate: string, maxScore: number, batch: string) => void;
+  updateInternalMarks: (studentId: string, subject: string, cia1: number, cia2: number, cia3: number, practical: number) => void;
+  sendNotification: (type: 'announcement' | 'circular' | 'schedule' | 'deadline' | 'exam', title: string, message: string, sender: string, targetBatch?: string) => void;
+  evaluateDirect: (studentId: string, experimentIndex: number, action: 'observation_only' | 'both' | 'record_only', subjectCode?: string, subjectName?: string) => Promise<void>;
+  updateSignoff: (studentId: string, experimentIndex: number, fields: { observationStatus?: 'none' | 'tick' | 'cross'; observationMarks?: number | string; recordStatus?: 'none' | 'tick' | 'cross'; subjectCode?: string; subjectName?: string }) => Promise<void>;
+  updateStudentRisk: (studentId: string, riskFlagged: boolean, riskReason?: string) => Promise<void>;
+  uploadFile: (file: File) => Promise<{ success: boolean; fileUrl?: string; error?: string }>;
+  queryAI: (prompt: string, context?: string) => Promise<{ success: boolean; response?: string; error?: string }>;
+  getDepartmentMetrics: () => any;
+  getFacultyData: (facultyId: string) => Faculty | undefined;
+  getStudentData: (studentId: string) => Student | undefined;
+  getFacultyStudents: (facultyId: string) => Student[];
+  refreshData: () => Promise<void>;
+  addPreApprovedFaculty: (data: { email: string; phone?: string; labName: string; subject: string; subjectCode: string; batch: string; sections: string }) => Promise<{ success: boolean; error?: string }>;
+  addBulkPreApprovedFaculties: (data: any[]) => Promise<{ success: boolean; error?: string }>;
+  changeAdminPassword: (oldPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  uploadExcelProvisioning: (file: File, manualDefaults?: Record<string, string>) => Promise<{ success: boolean; summary?: any; error?: string }>;
+  deleteFaculty: (facultyId: string) => Promise<{ success: boolean; error?: string }>;
+  manualProvisionData: (data: any) => Promise<{ success: boolean; error?: string }>;
+  uploadProfilePic: (file: File) => Promise<{ success: boolean; profilePic?: string; error?: string }>;
+  clearFacultyData: (facultyId: string) => Promise<{ success: boolean; error?: string }>;
+  theme: 'light' | 'dark';
+  toggleTheme: () => void;
+}
+
+const AcademicDataContext = createContext<AcademicDataContextType | undefined>(undefined);
+
+export function AcademicDataProvider({ children }: { children: ReactNode }) {
+  const [students, setStudents] = useState<Student[]>([]);
+  const [faculties, setFaculties] = useState<Faculty[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    return (localStorage.getItem('app_theme') as 'light' | 'dark') || 'light';
+  });
+  const { getAuthHeaders, user, updateProfilePic: authUpdateProfilePic } = useAuth();
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(nextTheme);
+    localStorage.setItem('app_theme', nextTheme);
+  };
+
+  const authFetch = async (url: string, options: RequestInit = {}) => {
+    const headers = getAuthHeaders();
+    return fetch(url, {
+      ...options,
+      headers: {
+        ...headers,
+        ...(options.headers || {}),
+      },
+    });
+  };
+
+  const fetchAcademicData = async () => {
+    try {
+      const res = await authFetch("/api/academic/data");
+      if (res.ok) {
+        const data = await res.json();
+        setStudents(data.students || []);
+        setFaculties(data.faculties || []);
+      } else if (res.status === 401) {
+        console.warn("Session expired. Please log in again.");
+      }
+    } catch (err) {
+      console.error("Failed to fetch academic data:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Real-time Socket.IO + SSE listener + Background Auto-Sync Polling
+  useEffect(() => {
+    if (!user.isAuthenticated || !user.token) {
+      setLoading(false);
+      disconnectSocket();
+      return;
+    }
+
+    // Initial fetch on login
+    fetchAcademicData();
+
+    // 1. Socket.IO Connection & Event Handlers
+    const socket = getSocket(user.token);
+
+    const handleConnect = () => {
+      // Re-fetch current state on socket reconnect to catch any missed updates
+      fetchAcademicData();
+    };
+
+    const handleRealtimeData = () => {
+      fetchAcademicData();
+    };
+
+    socket.on('connect', handleConnect);
+    socket.on('attendance:updated', handleRealtimeData);
+    socket.on('evaluation:updated', handleRealtimeData);
+    socket.on('notification:new', handleRealtimeData);
+    socket.on('assignment:created', handleRealtimeData);
+    socket.on('assignment:graded', handleRealtimeData);
+    socket.on('risk:flagged', handleRealtimeData);
+    socket.on('academic:stats-updated', handleRealtimeData);
+
+    // 2. Establish Real-time SSE Stream Connection as secondary listener
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource("/api/realtime/stream");
+      eventSource.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed.type === "ACADEMIC_DATA_UPDATED" || parsed.type === "ATTENDANCE_UPDATED") {
+            fetchAcademicData();
+          }
+        } catch (err) {
+          console.error("SSE parse error:", err);
+        }
+      };
+    } catch (err) {
+      console.error("Failed to connect to real-time SSE stream:", err);
+    }
+
+    // 3. Background Auto-Sync Polling (every 5 seconds when tab is active)
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchAcademicData();
+      }
+    }, 5000);
+
+    return () => {
+      socket.off('connect', handleConnect);
+      socket.off('attendance:updated', handleRealtimeData);
+      socket.off('evaluation:updated', handleRealtimeData);
+      socket.off('notification:new', handleRealtimeData);
+      socket.off('assignment:created', handleRealtimeData);
+      socket.off('assignment:graded', handleRealtimeData);
+      socket.off('risk:flagged', handleRealtimeData);
+      socket.off('academic:stats-updated', handleRealtimeData);
+      if (eventSource) eventSource.close();
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.isAuthenticated, user.token]);
+
+  const refreshData = async () => {
+    await fetchAcademicData();
+  };
+
+  // ── File upload ──────────────────────────────────────────────────────────────
+  const uploadFile = async (file: File): Promise<{ success: boolean; fileUrl?: string; error?: string }> => {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const headers: Record<string, string> = {};
+      if (user.token) headers["Authorization"] = `Bearer ${user.token}`;
+
+      const res = await fetch("/api/upload", { method: "POST", headers, body: formData });
+      if (res.ok) {
+        const data = await res.json();
+        return { success: true, fileUrl: data.fileUrl };
+      }
+      const err = await res.json();
+      return { success: false, error: err.error };
+    } catch (err) {
+      console.error("File upload failed:", err);
+      return { success: false, error: "File upload failed due to network error." };
+    }
+  };
+
+  // ── Gemini AI query ──────────────────────────────────────────────────────────
+  const queryAI = async (prompt: string, context?: string): Promise<{ success: boolean; response?: string; error?: string }> => {
+    try {
+      const res = await authFetch("/api/ai/query", {
+        method: "POST",
+        body: JSON.stringify({ prompt, context }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return { success: true, response: data.response };
+      }
+      const err = await res.json();
+      return { success: false, error: err.error };
+    } catch (err) {
+      console.error("AI query failed:", err);
+      return { success: false, error: "AI query failed due to network error." };
+    }
+  };
+
+  // ── Attendance ───────────────────────────────────────────────────────────────
+  const updateStudentAttendance = async (studentId: string, date: string, status: 'Present' | 'Absent' | 'On Duty', subjectCode?: string, subjectName?: string) => {
+    try {
+      const res = await authFetch("/api/academic/attendance", {
+        method: "POST",
+        body: JSON.stringify({ studentId, date, status, subjectCode, subjectName }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStudents(data.students);
+      }
+    } catch (err) {
+      console.error("Failed to update student attendance on server:", err);
+    }
+  };
+
+  const updateBatchStudentAttendance = async (
+    items: { studentId: string; status: 'Present' | 'Absent' | 'On Duty' }[],
+    date: string,
+    subjectCode?: string,
+    subjectName?: string
+  ) => {
+    try {
+      const res = await authFetch("/api/academic/attendance/batch", {
+        method: "POST",
+        body: JSON.stringify({ items, date, subjectCode, subjectName }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStudents(data.students);
+      }
+    } catch (err) {
+      console.error("Failed to update batch attendance on server:", err);
+    }
+  };
+
+  // ── Lab experiments ──────────────────────────────────────────────────────────
+  const submitLabExperiment = async (studentId: string, experimentId: string, observationFile?: string, recordFile?: string) => {
+    try {
+      const res = await authFetch("/api/academic/lab/submit", {
+        method: "POST",
+        body: JSON.stringify({ studentId, experimentId, observationFile, recordFile }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStudents(data.students);
+      }
+    } catch (err) {
+      console.error("Failed to submit lab experiment on server:", err);
+    }
+  };
+
+  const updateLabSubmissionStatus = async (
+    studentId: string,
+    experimentId: string,
+    status: 'Approved' | 'Pending' | 'Rejected' | 'Submitted - Pending',
+    score: number,
+    remarks?: string
+  ) => {
+    try {
+      const res = await authFetch("/api/academic/lab/status", {
+        method: "POST",
+        body: JSON.stringify({ studentId, experimentId, status, score, remarks }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStudents(data.students);
+      }
+    } catch (err) {
+      console.error("Failed to update lab submission status on server:", err);
+    }
+  };
+
+  const evaluateDirect = async (
+    studentId: string,
+    experimentIndex: number,
+    action: 'observation_only' | 'both' | 'record_only',
+    subjectCode?: string,
+    subjectName?: string
+  ) => {
+    try {
+      const res = await authFetch("/api/academic/evaluation/direct", {
+        method: "POST",
+        body: JSON.stringify({ studentId, experimentIndex, action, subjectCode, subjectName }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStudents(data.students);
+      }
+    } catch (err) {
+      console.error("Failed to evaluate student directly on server:", err);
+    }
+  };
+
+  const updateSignoff = async (
+    studentId: string,
+    experimentIndex: number,
+    fields: {
+      observationStatus?: 'none' | 'tick' | 'cross';
+      observationMarks?: number | string;
+      recordStatus?: 'none' | 'tick' | 'cross';
+      subjectCode?: string;
+      subjectName?: string;
+    }
+  ) => {
+    try {
+      const res = await authFetch("/api/academic/evaluation/update-signoff", {
+        method: "POST",
+        body: JSON.stringify({ studentId, experimentIndex, ...fields }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStudents(data.students);
+      }
+    } catch (err) {
+      console.error("Failed to update student signoff on server:", err);
+    }
+  };
+
+  // ── Assignments ──────────────────────────────────────────────────────────────
+  const submitAssignment = async (studentId: string, assignmentId: string, filename: string) => {
+    try {
+      const res = await authFetch("/api/academic/assignment/submit", {
+        method: "POST",
+        body: JSON.stringify({ studentId, assignmentId, filename }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStudents(data.students);
+      }
+    } catch (err) {
+      console.error("Failed to submit assignment on server:", err);
+    }
+  };
+
+  const gradeAssignment = async (studentId: string, assignmentId: string, score: number, remarks: string) => {
+    try {
+      const res = await authFetch("/api/academic/assignment/grade", {
+        method: "POST",
+        body: JSON.stringify({ studentId, assignmentId, score, remarks }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStudents(data.students);
+      }
+    } catch (err) {
+      console.error("Failed to grade assignment on server:", err);
+    }
+  };
+
+  const createAssignment = async (
+    facultyId: string,
+    title: string,
+    description: string,
+    dueDate: string,
+    maxScore: number,
+    batch: string
+  ) => {
+    try {
+      const res = await authFetch("/api/academic/assignment/create", {
+        method: "POST",
+        body: JSON.stringify({ facultyId, title, description, dueDate, maxScore, batch }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStudents(data.students);
+      }
+    } catch (err) {
+      console.error("Failed to create assignment on server:", err);
+    }
+  };
+
+  // ── Internal marks ───────────────────────────────────────────────────────────
+  const updateInternalMarks = async (
+    studentId: string,
+    subject: string,
+    cia1: number,
+    cia2: number,
+    cia3: number,
+    practical: number
+  ) => {
+    try {
+      const res = await authFetch("/api/academic/internal-marks", {
+        method: "POST",
+        body: JSON.stringify({ studentId, subject, cia1, cia2, cia3, practical }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStudents(data.students);
+      }
+    } catch (err) {
+      console.error("Failed to update internal marks on server:", err);
+    }
+  };
+
+  // ── Notifications ────────────────────────────────────────────────────────────
+  const sendNotification = async (
+    type: 'announcement' | 'circular' | 'schedule' | 'deadline' | 'exam',
+    title: string,
+    message: string,
+    sender: string,
+    targetBatch?: string
+  ) => {
+    try {
+      const res = await authFetch("/api/academic/notifications", {
+        method: "POST",
+        body: JSON.stringify({ type, title, message, sender, targetBatch }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStudents(data.students);
+      }
+    } catch (err) {
+      console.error("Failed to send notification on server:", err);
+    }
+  };
+
+  // ── Risk ─────────────────────────────────────────────────────────────────────
+  const updateStudentRisk = async (studentId: string, riskFlagged: boolean, riskReason?: string) => {
+    try {
+      const res = await authFetch("/api/academic/student/risk", {
+        method: "POST",
+        body: JSON.stringify({ studentId, riskFlagged, riskReason }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStudents(data.students);
+      }
+    } catch (err) {
+      console.error("Failed to update student risk on server:", err);
+    }
+  };
+
+  // ── HOD Operations ──────────────────────────────────────────────────────────
+  const addPreApprovedFaculty = async (data: { email: string; phone?: string; labName: string; subject: string; subjectCode: string; batch: string; sections: string }): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await authFetch("/api/hod/faculty", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        setFaculties(result.faculties);
+        return { success: true };
+      }
+      const err = await res.json();
+      return { success: false, error: err.error };
+    } catch (err) {
+      console.error("Failed to add pre-approved faculty:", err);
+      return { success: false, error: "Failed due to network error." };
+    }
+  };
+
+  const addBulkPreApprovedFaculties = async (data: any[]): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await authFetch("/api/hod/bulk-faculty", {
+        method: "POST",
+        body: JSON.stringify({ data }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        setFaculties(result.faculties);
+        return { success: true };
+      }
+      const err = await res.json();
+      return { success: false, error: err.error };
+    } catch (err) {
+      console.error("Failed to bulk add pre-approved faculties:", err);
+      return { success: false, error: "Failed due to network error." };
+    }
+  };
+
+  const changeAdminPassword = async (oldPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await authFetch("/api/admin/password", {
+        method: "POST",
+        body: JSON.stringify({ oldPassword, newPassword }),
+      });
+      if (res.ok) {
+        return { success: true };
+      }
+      const err = await res.json();
+      return { success: false, error: err.error };
+    } catch (err) {
+      console.error("Failed to change admin password:", err);
+      return { success: false, error: "Failed due to network error." };
+    }
+  };
+
+  // ── Excel Upload Provisioning ────────────────────────────────────────────────
+  const uploadExcelProvisioning = async (file: File, manualDefaults?: Record<string, string>): Promise<{ success: boolean; summary?: any; error?: string }> => {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      if (manualDefaults) {
+        Object.entries(manualDefaults).forEach(([key, val]) => {
+          if (val) formData.append(key, val);
+        });
+      }
+      const headers: Record<string, string> = {};
+      if (user.token) headers["Authorization"] = `Bearer ${user.token}`;
+
+      const res = await fetch("/api/academic/upload-excel", {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.faculties) setFaculties(data.faculties);
+        if (data.students) setStudents(data.students);
+        return { success: true, summary: data.summary };
+      }
+      const err = await res.json();
+      return { success: false, error: err.error };
+    } catch (err) {
+      console.error("Excel upload failed:", err);
+      return { success: false, error: "Excel upload failed due to network error." };
+    }
+  };
+
+  // ── Delete Faculty ──────────────────────────────────────────────────────────
+  const deleteFaculty = async (facultyId: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await authFetch(`/api/hod/faculty/${facultyId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.faculties) setFaculties(data.faculties);
+        return { success: true };
+      }
+      const err = await res.json();
+      return { success: false, error: err.error };
+    } catch (err) {
+      console.error("Delete faculty failed:", err);
+      return { success: false, error: "Delete faculty failed due to network error." };
+    }
+  };
+
+  // ── Clear Faculty Data (Reset Timetable & Subjects for fresh upload) ─────────
+  const clearFacultyData = async (facultyId: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await authFetch(`/api/hod/faculty/${facultyId}/clear-data`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.faculties) setFaculties(data.faculties);
+        if (data.students) setStudents(data.students);
+        return { success: true };
+      }
+      const err = await res.json();
+      return { success: false, error: err.error };
+    } catch (err) {
+      console.error("Clear faculty data failed:", err);
+      return { success: false, error: "Clear faculty data failed due to network error." };
+    }
+  };
+
+  // ── Manual Provision Data ───────────────────────────────────────────────────
+  const manualProvisionData = async (data: any): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await authFetch("/api/hod/manual-provision", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        if (result.faculties) setFaculties(result.faculties);
+        if (result.students) setStudents(result.students);
+        return { success: true };
+      }
+      const err = await res.json();
+      return { success: false, error: err.error };
+    } catch (err) {
+      console.error("Manual provision failed:", err);
+      return { success: false, error: "Manual provision failed due to network error." };
+    }
+  };
+
+  // ── Profile Picture Upload ──────────────────────────────────────────────────
+  const uploadProfilePic = async (file: File): Promise<{ success: boolean; profilePic?: string; error?: string }> => {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const headers: Record<string, string> = {};
+      if (user.token) headers["Authorization"] = `Bearer ${user.token}`;
+
+      const res = await fetch("/api/user/profile-pic", {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.profilePic && authUpdateProfilePic) {
+          await authUpdateProfilePic(data.profilePic);
+        }
+        return { success: true, profilePic: data.profilePic };
+      }
+      const err = await res.json();
+      return { success: false, error: err.error };
+    } catch (err) {
+      console.error("Profile pic upload failed:", err);
+      return { success: false, error: "Profile pic upload failed due to network error." };
+    }
+  };
+
+  // ── Derived helpers ──────────────────────────────────────────────────────────
+  const getDepartmentMetrics = () => calculateDepartmentMetrics(students, faculties);
+  const getFacultyData = (facultyIdOrEmail: string) => {
+    const searchVal = (facultyIdOrEmail || user.email || user.id || "").toLowerCase();
+    if (!searchVal) return undefined;
+    return faculties.find((f: any) =>
+      (f.id && String(f.id).toLowerCase() === searchVal) ||
+      (f.email && String(f.email).toLowerCase() === searchVal) ||
+      (user.email && f.email && String(f.email).toLowerCase() === user.email.toLowerCase()) ||
+      (user.id && f.id && String(f.id).toLowerCase() === String(user.id).toLowerCase())
+    );
+  };
+  const getStudentData = (studentId: string) => students.find((s) => s.id === studentId);
+
+  const getFacultyStudents = (facultyIdOrEmail: string) => {
+    const faculty: any = getFacultyData(facultyIdOrEmail);
+    if (!faculty) {
+      const lower = facultyIdOrEmail?.toLowerCase();
+      const matched = students.filter(
+        (s: any) => s.facultyId === facultyIdOrEmail || s.facultyId?.toLowerCase() === lower || s.facultyEmail?.toLowerCase() === lower
+      );
+      return matched.length > 0 ? matched : students;
+    }
+
+    const facEmail = faculty.email?.toLowerCase();
+    const facId = faculty.id;
+    const facSections = [
+      faculty.section,
+      faculty.sections,
+      ...(Array.isArray(faculty.assignedSectionIds) ? faculty.assignedSectionIds : [])
+    ].filter(Boolean).map((x: string) => String(x).toLowerCase());
+
+    const matched = students.filter((s: any) => {
+      // 1. Direct faculty ID or email match
+      if (s.facultyId === facId || (facEmail && (s.facultyId?.toLowerCase() === facEmail || s.facultyEmail?.toLowerCase() === facEmail))) return true;
+
+      // 2. Section ID match
+      if (faculty.sectionId && (s.sectionId === faculty.sectionId || s.section === faculty.sectionId)) return true;
+
+      // 3. Assigned section IDs array match
+      if (Array.isArray(faculty.assignedSectionIds) && (faculty.assignedSectionIds.includes(s.sectionId) || faculty.assignedSectionIds.includes(s.section))) return true;
+
+      // 4. Section string name match
+      if (facSections.length > 0) {
+        const sSec = String(s.section || s.sectionName || '').toLowerCase();
+        const sSecId = String(s.sectionId || '').toLowerCase();
+        if (sSec && facSections.some(sec => sec === sSec || sec === sSecId || sSec.includes(sec) || sec.includes(sSec))) {
+          return true;
+        }
+      }
+
+      // 5. Department match
+      if (faculty.department && s.department && faculty.department.toLowerCase() === s.department.toLowerCase()) {
+        return true;
+      }
+
+      return false;
+    });
+
+    return matched.length > 0 ? matched : students;
+  };
+
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-sm font-semibold tracking-wide text-indigo-200">Loading Academic Records...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <AcademicDataContext.Provider
+      value={{
+        students,
+        faculties,
+        setStudents,
+        setFaculties,
+        updateStudentAttendance,
+        updateBatchStudentAttendance,
+        submitLabExperiment,
+        updateLabSubmissionStatus,
+        submitAssignment,
+        gradeAssignment,
+        createAssignment,
+        updateInternalMarks,
+        sendNotification,
+        evaluateDirect,
+        updateSignoff,
+        updateStudentRisk,
+        uploadFile,
+        queryAI,
+        getDepartmentMetrics,
+        getFacultyData,
+        getStudentData,
+        getFacultyStudents,
+        refreshData,
+        addPreApprovedFaculty,
+        addBulkPreApprovedFaculties,
+        changeAdminPassword,
+        uploadExcelProvisioning,
+        deleteFaculty,
+        clearFacultyData,
+        manualProvisionData,
+        uploadProfilePic,
+        theme,
+        toggleTheme,
+      }}
+    >
+      {children}
+    </AcademicDataContext.Provider>
+  );
+}
+
+export function useAcademicData() {
+  const context = useContext(AcademicDataContext);
+  if (context === undefined) {
+    throw new Error('useAcademicData must be used within an AcademicDataProvider');
+  }
+  return context;
+}

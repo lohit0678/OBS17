@@ -82,6 +82,10 @@ const AttendanceHistorySchema = new Schema(
   {
     date: String,
     status: String,
+    subjectCode: { type: String, default: "" },
+    subjectName: { type: String, default: "" },
+    facultyId: { type: String, default: "" },
+    facultyEmail: { type: String, default: "" },
   },
   { _id: false }
 );
@@ -103,8 +107,12 @@ const StudentSchema = new Schema(
     notifications: [NotificationSchema],
     calendarEvents: [CalendarEventSchema],
     certificates: [CertificateSchema],
+    batchId: { type: String, default: "" },
+    sectionId: { type: String, default: "" },
     batch: { type: String, required: true },
     labName: { type: String, required: true },
+    subjectCode: { type: String, default: "" },
+    subjectName: { type: String, default: "" },
     registerNo: { type: String, required: true },
     rollNo: { type: String, required: true },
     department: { type: String, required: true },
@@ -119,6 +127,7 @@ const StudentSchema = new Schema(
   },
   {
     timestamps: true,
+    versionKey: false,
     toJSON: {
       transform(_doc: any, ret: any) {
         delete ret._id;

@@ -32,7 +32,7 @@ async function resetAdmins() {
     const result = await AdminModel.findOneAndUpdate(
       { username },
       { $set: { username, password: hashed } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     console.log(`[reset-admin] ✅ Account ready: ${result.username}`);
   }

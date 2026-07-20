@@ -1,11 +1,15 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Student, Faculty, calculateDepartmentMetrics } from '../data';
 import { useAuth } from './AuthContext';
+import { getSocket, disconnectSocket } from '../socket';
 
 interface AcademicDataContextType {
   students: Student[];
   faculties: Faculty[];
-  updateStudentAttendance: (studentId: string, date: string, status: 'Present' | 'Absent' | 'On Duty') => void;
+  setStudents: React.Dispatch<React.SetStateAction<Student[]>>;
+  setFaculties: React.Dispatch<React.SetStateAction<Faculty[]>>;
+  updateStudentAttendance: (studentId: string, date: string, status: 'Present' | 'Absent' | 'On Duty', subjectCode?: string, subjectName?: string) => Promise<void>;
+  updateBatchStudentAttendance: (items: { studentId: string; status: 'Present' | 'Absent' | 'On Duty' }[], date: string, subjectCode?: string, subjectName?: string) => Promise<void>;
   submitLabExperiment: (studentId: string, experimentId: string, observationFile?: string, recordFile?: string) => void;
   updateLabSubmissionStatus: (studentId: string, experimentId: string, status: 'Approved' | 'Pending' | 'Rejected' | 'Submitted - Pending', score: number, remarks?: string) => void;
   submitAssignment: (studentId: string, assignmentId: string, filename: string) => void;
@@ -13,7 +17,8 @@ interface AcademicDataContextType {
   createAssignment: (facultyId: string, title: string, description: string, dueDate: string, maxScore: number, batch: string) => void;
   updateInternalMarks: (studentId: string, subject: string, cia1: number, cia2: number, cia3: number, practical: number) => void;
   sendNotification: (type: 'announcement' | 'circular' | 'schedule' | 'deadline' | 'exam', title: string, message: string, sender: string, targetBatch?: string) => void;
-  evaluateDirect: (studentId: string, experimentIndex: number, action: 'observation_only' | 'both' | 'record_only') => Promise<void>;
+  evaluateDirect: (studentId: string, experimentIndex: number, action: 'observation_only' | 'both' | 'record_only', subjectCode?: string, subjectName?: string) => Promise<void>;
+  updateSignoff: (studentId: string, experimentIndex: number, fields: { observationStatus?: 'none' | 'tick' | 'cross'; observationMarks?: number | string; recordStatus?: 'none' | 'tick' | 'cross'; subjectCode?: string; subjectName?: string }) => Promise<void>;
   updateStudentRisk: (studentId: string, riskFlagged: boolean, riskReason?: string) => Promise<void>;
   uploadFile: (file: File) => Promise<{ success: boolean; fileUrl?: string; error?: string }>;
   queryAI: (prompt: string, context?: string) => Promise<{ success: boolean; response?: string; error?: string }>;
@@ -23,6 +28,7 @@ interface AcademicDataContextType {
   getFacultyStudents: (facultyId: string) => Student[];
   refreshData: () => Promise<void>;
   addPreApprovedFaculty: (data: { email: string; phone?: string; labName: string; subject: string; subjectCode: string; batch: string; sections: string }) => Promise<{ success: boolean; error?: string }>;
+  addBulkPreApprovedFaculties: (data: any[]) => Promise<{ success: boolean; error?: string }>;
   changeAdminPassword: (oldPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
   uploadExcelProvisioning: (file: File, manualDefaults?: Record<string, string>) => Promise<{ success: boolean; summary?: any; error?: string }>;
   deleteFaculty: (facultyId: string) => Promise<{ success: boolean; error?: string }>;
@@ -78,13 +84,75 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Sync state with server on mount and when user changes
+  // Real-time Socket.IO + SSE listener + Background Auto-Sync Polling
   useEffect(() => {
-    if (user.isAuthenticated && user.token) {
-      fetchAcademicData();
-    } else {
+    if (!user.isAuthenticated || !user.token) {
       setLoading(false);
+      disconnectSocket();
+      return;
     }
+
+    // Initial fetch on login
+    fetchAcademicData();
+
+    // 1. Socket.IO Connection & Event Handlers
+    const socket = getSocket(user.token);
+
+    const handleConnect = () => {
+      // Re-fetch current state on socket reconnect to catch any missed updates
+      fetchAcademicData();
+    };
+
+    const handleRealtimeData = () => {
+      fetchAcademicData();
+    };
+
+    socket.on('connect', handleConnect);
+    socket.on('attendance:updated', handleRealtimeData);
+    socket.on('evaluation:updated', handleRealtimeData);
+    socket.on('notification:new', handleRealtimeData);
+    socket.on('assignment:created', handleRealtimeData);
+    socket.on('assignment:graded', handleRealtimeData);
+    socket.on('risk:flagged', handleRealtimeData);
+    socket.on('academic:stats-updated', handleRealtimeData);
+
+    // 2. Establish Real-time SSE Stream Connection as secondary listener
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource("/api/realtime/stream");
+      eventSource.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed.type === "ACADEMIC_DATA_UPDATED" || parsed.type === "ATTENDANCE_UPDATED") {
+            fetchAcademicData();
+          }
+        } catch (err) {
+          console.error("SSE parse error:", err);
+        }
+      };
+    } catch (err) {
+      console.error("Failed to connect to real-time SSE stream:", err);
+    }
+
+    // 3. Background Auto-Sync Polling (every 5 seconds when tab is active)
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchAcademicData();
+      }
+    }, 5000);
+
+    return () => {
+      socket.off('connect', handleConnect);
+      socket.off('attendance:updated', handleRealtimeData);
+      socket.off('evaluation:updated', handleRealtimeData);
+      socket.off('notification:new', handleRealtimeData);
+      socket.off('assignment:created', handleRealtimeData);
+      socket.off('assignment:graded', handleRealtimeData);
+      socket.off('risk:flagged', handleRealtimeData);
+      socket.off('academic:stats-updated', handleRealtimeData);
+      if (eventSource) eventSource.close();
+      clearInterval(interval);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.isAuthenticated, user.token]);
 
@@ -133,11 +201,11 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
   };
 
   // ── Attendance ───────────────────────────────────────────────────────────────
-  const updateStudentAttendance = async (studentId: string, date: string, status: 'Present' | 'Absent' | 'On Duty') => {
+  const updateStudentAttendance = async (studentId: string, date: string, status: 'Present' | 'Absent' | 'On Duty', subjectCode?: string, subjectName?: string) => {
     try {
       const res = await authFetch("/api/academic/attendance", {
         method: "POST",
-        body: JSON.stringify({ studentId, date, status }),
+        body: JSON.stringify({ studentId, date, status, subjectCode, subjectName }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -145,6 +213,26 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
       }
     } catch (err) {
       console.error("Failed to update student attendance on server:", err);
+    }
+  };
+
+  const updateBatchStudentAttendance = async (
+    items: { studentId: string; status: 'Present' | 'Absent' | 'On Duty' }[],
+    date: string,
+    subjectCode?: string,
+    subjectName?: string
+  ) => {
+    try {
+      const res = await authFetch("/api/academic/attendance/batch", {
+        method: "POST",
+        body: JSON.stringify({ items, date, subjectCode, subjectName }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStudents(data.students);
+      }
+    } catch (err) {
+      console.error("Failed to update batch attendance on server:", err);
     }
   };
 
@@ -188,12 +276,14 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
   const evaluateDirect = async (
     studentId: string,
     experimentIndex: number,
-    action: 'observation_only' | 'both' | 'record_only'
+    action: 'observation_only' | 'both' | 'record_only',
+    subjectCode?: string,
+    subjectName?: string
   ) => {
     try {
       const res = await authFetch("/api/academic/evaluation/direct", {
         method: "POST",
-        body: JSON.stringify({ studentId, experimentIndex, action }),
+        body: JSON.stringify({ studentId, experimentIndex, action, subjectCode, subjectName }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -201,6 +291,31 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
       }
     } catch (err) {
       console.error("Failed to evaluate student directly on server:", err);
+    }
+  };
+
+  const updateSignoff = async (
+    studentId: string,
+    experimentIndex: number,
+    fields: {
+      observationStatus?: 'none' | 'tick' | 'cross';
+      observationMarks?: number | string;
+      recordStatus?: 'none' | 'tick' | 'cross';
+      subjectCode?: string;
+      subjectName?: string;
+    }
+  ) => {
+    try {
+      const res = await authFetch("/api/academic/evaluation/update-signoff", {
+        method: "POST",
+        body: JSON.stringify({ studentId, experimentIndex, ...fields }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStudents(data.students);
+      }
+    } catch (err) {
+      console.error("Failed to update student signoff on server:", err);
     }
   };
 
@@ -334,6 +449,25 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
       return { success: false, error: err.error };
     } catch (err) {
       console.error("Failed to add pre-approved faculty:", err);
+      return { success: false, error: "Failed due to network error." };
+    }
+  };
+
+  const addBulkPreApprovedFaculties = async (data: any[]): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await authFetch("/api/hod/bulk-faculty", {
+        method: "POST",
+        body: JSON.stringify({ data }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        setFaculties(result.faculties);
+        return { success: true };
+      }
+      const err = await res.json();
+      return { success: false, error: err.error };
+    } catch (err) {
+      console.error("Failed to bulk add pre-approved faculties:", err);
       return { success: false, error: "Failed due to network error." };
     }
   };
@@ -477,9 +611,66 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
 
   // ── Derived helpers ──────────────────────────────────────────────────────────
   const getDepartmentMetrics = () => calculateDepartmentMetrics(students, faculties);
-  const getFacultyData = (facultyId: string) => faculties.find((f) => f.id === facultyId);
+  const getFacultyData = (facultyIdOrEmail: string) => {
+    const searchVal = (facultyIdOrEmail || user.email || user.id || "").toLowerCase();
+    if (!searchVal) return undefined;
+    return faculties.find((f: any) =>
+      (f.id && String(f.id).toLowerCase() === searchVal) ||
+      (f.email && String(f.email).toLowerCase() === searchVal) ||
+      (user.email && f.email && String(f.email).toLowerCase() === user.email.toLowerCase()) ||
+      (user.id && f.id && String(f.id).toLowerCase() === String(user.id).toLowerCase())
+    );
+  };
   const getStudentData = (studentId: string) => students.find((s) => s.id === studentId);
-  const getFacultyStudents = (facultyId: string) => students.filter((s) => s.facultyId === facultyId);
+
+  const getFacultyStudents = (facultyIdOrEmail: string) => {
+    const faculty: any = getFacultyData(facultyIdOrEmail);
+    if (!faculty) {
+      const lower = facultyIdOrEmail?.toLowerCase();
+      const matched = students.filter(
+        (s: any) => s.facultyId === facultyIdOrEmail || s.facultyId?.toLowerCase() === lower || s.facultyEmail?.toLowerCase() === lower
+      );
+      return matched.length > 0 ? matched : students;
+    }
+
+    const facEmail = faculty.email?.toLowerCase();
+    const facId = faculty.id;
+    const facSections = [
+      faculty.section,
+      faculty.sections,
+      ...(Array.isArray(faculty.assignedSectionIds) ? faculty.assignedSectionIds : [])
+    ].filter(Boolean).map((x: string) => String(x).toLowerCase());
+
+    const matched = students.filter((s: any) => {
+      // 1. Direct faculty ID or email match
+      if (s.facultyId === facId || (facEmail && (s.facultyId?.toLowerCase() === facEmail || s.facultyEmail?.toLowerCase() === facEmail))) return true;
+
+      // 2. Section ID match
+      if (faculty.sectionId && (s.sectionId === faculty.sectionId || s.section === faculty.sectionId)) return true;
+
+      // 3. Assigned section IDs array match
+      if (Array.isArray(faculty.assignedSectionIds) && (faculty.assignedSectionIds.includes(s.sectionId) || faculty.assignedSectionIds.includes(s.section))) return true;
+
+      // 4. Section string name match
+      if (facSections.length > 0) {
+        const sSec = String(s.section || s.sectionName || '').toLowerCase();
+        const sSecId = String(s.sectionId || '').toLowerCase();
+        if (sSec && facSections.some(sec => sec === sSec || sec === sSecId || sSec.includes(sec) || sec.includes(sSec))) {
+          return true;
+        }
+      }
+
+      // 5. Department match
+      if (faculty.department && s.department && faculty.department.toLowerCase() === s.department.toLowerCase()) {
+        return true;
+      }
+
+      return false;
+    });
+
+    return matched.length > 0 ? matched : students;
+  };
+
 
   if (loading) {
     return (
@@ -497,7 +688,10 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
       value={{
         students,
         faculties,
+        setStudents,
+        setFaculties,
         updateStudentAttendance,
+        updateBatchStudentAttendance,
         submitLabExperiment,
         updateLabSubmissionStatus,
         submitAssignment,
@@ -506,6 +700,7 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
         updateInternalMarks,
         sendNotification,
         evaluateDirect,
+        updateSignoff,
         updateStudentRisk,
         uploadFile,
         queryAI,
@@ -515,6 +710,7 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
         getFacultyStudents,
         refreshData,
         addPreApprovedFaculty,
+        addBulkPreApprovedFaculties,
         changeAdminPassword,
         uploadExcelProvisioning,
         deleteFaculty,

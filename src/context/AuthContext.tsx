@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { disconnectSocket } from '../socket';
 
-export type UserRole = 'HOD' | 'Faculty' | 'Student';
+export type UserRole = 'Admin' | 'HOD' | 'Faculty' | 'Student';
 
 export interface User {
   isAuthenticated: boolean;
@@ -154,6 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    disconnectSocket();
     setUser(defaultUser);
     localStorage.removeItem('erp_user');
   };

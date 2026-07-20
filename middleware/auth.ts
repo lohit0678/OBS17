@@ -6,7 +6,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret_change_in_prod";
 export interface AuthRequest extends Request {
   user?: {
     id: string;
-    role: "HOD" | "Faculty" | "Student";
+    role: "HOD" | "Faculty" | "Student" | "Admin";
     email: string;
     name: string;
   };

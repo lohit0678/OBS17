@@ -19,6 +19,9 @@ export default function Login() {
   const [regName, setRegName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
+  const [regSubjectName, setRegSubjectName] = useState('');
+  const [regSubjectCode, setRegSubjectCode] = useState('');
+  const [regLabName, setRegLabName] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -44,8 +47,8 @@ export default function Login() {
       const res = await login(email.trim(), password);
       if (res.success && res.user) {
         let targetPath = '/faculty/dashboard';
-        if (res.user.role === 'HOD') {
-          targetPath = '/hod/dashboard';
+        if (res.user.role === 'Admin') {
+          targetPath = '/admin/dashboard';
         } else if (res.user.role === 'Student') {
           targetPath = '/student/dashboard';
         }
@@ -66,8 +69,8 @@ export default function Login() {
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!regName || !regEmail || !regPassword) {
-      setErrorMsg('Please fill in all registration fields.');
+    if (!regName || !regEmail || !regPassword || !regSubjectName) {
+      setErrorMsg('Please fill in all registration fields, including Subject Name.');
       return;
     }
 
@@ -76,15 +79,31 @@ export default function Login() {
     setSuccessMsg('');
 
     try {
-      const res = await register(regName, regEmail, regPassword, 'Data Structures & Algorithms Lab');
-      if (res.success) {
-        setSuccessMsg('Account registered and activated successfully! Logging you in...');
-        setTimeout(() => {
-          navigate('/faculty/dashboard');
-        }, 1200);
-      } else {
-        setErrorMsg(res.error || 'Registration failed. Make sure your email is pre-approved by the HOD.');
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: regName,
+          email: regEmail,
+          password: regPassword,
+          subjectName: regSubjectName,
+          subjectCode: regSubjectCode,
+          labName: regLabName || "General Lab"
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        setErrorMsg(errorData.error || "Registration failed.");
+        setLoading(false);
+        return;
       }
+
+      await login(regEmail.trim(), regPassword);
+      setSuccessMsg('Account registered and activated successfully! Logging you in...');
+      setTimeout(() => {
+        navigate('/faculty/dashboard');
+      }, 1200);
     } catch (err) {
       setErrorMsg('Connection error during faculty registration.');
     } finally {
@@ -114,8 +133,8 @@ export default function Login() {
       const res = await loginWithGoogle(dummyCredential);
       if (res.success && res.user) {
         let targetPath = '/faculty/dashboard';
-        if (res.user.role === 'HOD') {
-          targetPath = '/hod/dashboard';
+        if (res.user.role === 'Admin') {
+          targetPath = '/admin/dashboard';
         }
         setSuccessMsg('Google Authentication successful! Opening dashboard...');
         setTimeout(() => {
@@ -264,6 +283,49 @@ export default function Login() {
                 </div>
               </div>
 
+              {/* Subject Name field */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Handling Subject Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={regSubjectName}
+                  onChange={(e) => setRegSubjectName(e.target.value)}
+                  placeholder="e.g. Data Structures / Python Programming"
+                  className="w-full px-4 py-3 border border-slate-200 bg-white rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium"
+                />
+              </div>
+
+              {/* Subject Code field */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Subject Code
+                </label>
+                <input
+                  type="text"
+                  value={regSubjectCode}
+                  onChange={(e) => setRegSubjectCode(e.target.value)}
+                  placeholder="e.g. CS3401 / CS3451"
+                  className="w-full px-4 py-3 border border-slate-200 bg-white rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium"
+                />
+              </div>
+
+              {/* Lab Room Name field */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Assigned Laboratory Room Name
+                </label>
+                <input
+                  type="text"
+                  value={regLabName}
+                  onChange={(e) => setRegLabName(e.target.value)}
+                  placeholder="e.g. Datascience Laboratory"
+                  className="w-full px-4 py-3 border border-slate-200 bg-white rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium"
+                />
+              </div>
+
               <button
                 type="submit"
                 disabled={loading}
@@ -370,6 +432,63 @@ export default function Login() {
                   className="text-indigo-600 hover:underline font-black"
                 >
                   Activate Faculty Profile
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Demo access profiles */}
+          {!isRegister && (
+            <div className="mt-6 border-t border-slate-100 pt-5">
+              <div className="flex items-center gap-1.5 justify-center mb-3">
+                <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Demo Access Profiles</span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2">
+                {/* Super Admin Credential */}
+                <button
+                  type="button"
+                  onClick={() => fillDemoCredentials('admin', 'Hod@Admin123')}
+                  className="flex items-center gap-3 px-4 py-2.5 bg-slate-50 border border-indigo-200 hover:border-indigo-300 hover:bg-indigo-50/20 text-left rounded-xl transition-all cursor-pointer group"
+                >
+                  <div className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
+                    <ShieldAlert className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">Super Admin Portal (Create Timetables)</p>
+                    <p className="text-[10px] text-slate-400 font-medium">admin / Hod@Admin123</p>
+                  </div>
+                </button>
+
+                {/* HOD Credentials (Admin Email) */}
+                <button
+                  type="button"
+                  onClick={() => fillDemoCredentials('hod@college.edu', 'Hod@Admin123')}
+                  className="flex items-center gap-3 px-4 py-2.5 bg-slate-50 border border-blue-100 hover:border-blue-200 hover:bg-blue-50/20 text-left rounded-xl transition-all cursor-pointer group"
+                >
+                  <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" /></svg>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">Admin Email Login</p>
+                    <p className="text-[10px] text-slate-400 font-medium">hod@college.edu / Hod@Admin123</p>
+                  </div>
+                </button>
+
+                {/* Faculty Credentials */}
+                <button
+                  type="button"
+                  onClick={() => fillDemoCredentials('ramesh.kumar@college.edu')}
+                  className="flex items-center gap-3 px-4 py-2.5 bg-slate-50 border border-slate-200 hover:border-blue-200 hover:bg-blue-50/20 text-left rounded-xl transition-all cursor-pointer group"
+                >
+                  <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">Dr. Ramesh Kumar (Faculty)</p>
+                    <p className="text-[10px] text-slate-400 font-medium">ramesh.kumar@college.edu / password</p>
+                  </div>
                 </button>
               </div>
             </div>

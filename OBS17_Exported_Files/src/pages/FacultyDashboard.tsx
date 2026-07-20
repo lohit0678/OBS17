@@ -1,0 +1,2010 @@
+import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import * as XLSX from 'xlsx';
+import { useAuth } from '../context/AuthContext';
+import { useAcademicData } from '../context/AcademicDataContext';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend, 
+  ResponsiveContainer 
+} from 'recharts';
+import {
+  Users,
+  Check,
+  X,
+  Download,
+  LayoutDashboard,
+  GraduationCap,
+  ClipboardCheck,
+  BookOpen,
+  FileText,
+  Phone,
+  Mail,
+  User as UserIcon,
+  Book,
+  Building,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  FileCheck,
+  ChevronDown,
+  Calendar,
+  Edit3
+} from 'lucide-react';
+import { Bell } from 'lucide-react';
+
+// Define the 12 Lab Exercises mapped to 6 Weeks
+const LAB_EXERCISES = [
+  { week: 1, exp: 1, name: "Stack Operations using Arrays" },
+  { week: 1, exp: 2, name: "Queue Implementation using Arrays" },
+  { week: 2, exp: 3, name: "Singly Linked List Insertion & Deletion" },
+  { week: 2, exp: 4, name: "Binary Search Tree Traversals" },
+  { week: 3, exp: 5, name: "Graph Search Algorithms (BFS & DFS)" },
+  { week: 3, exp: 6, name: "Sorting Techniques (Merge & Quick Sort)" },
+  { week: 4, exp: 7, name: "Hash Table Collision Resolution" },
+  { week: 4, exp: 8, name: "Minimum Spanning Tree (Kruskal & Prim)" },
+  { week: 5, exp: 9, name: "Shortest Path Routing (Dijkstra's Algorithm)" },
+  { week: 5, exp: 10, name: "Min/Max Heap and Priority Queues" },
+  { week: 6, exp: 11, name: "Advanced Tree Indexing Schemes" },
+  { week: 6, exp: 12, name: "Network Routing and Simulation" }
+];
+
+function getLocalDateString(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export default function FacultyDashboard() {
+  const { user, updateProfilePic } = useAuth();
+  const { students, getFacultyData, getFacultyStudents, updateStudentAttendance, updateBatchStudentAttendance, updateSignoff, refreshData } = useAcademicData();
+  const { tab } = useParams<{ tab?: string }>();
+  const today = getLocalDateString();
+
+  // Selected Section State (Default: empty, synced dynamically)
+  const [selectedSection, setSelectedSection] = useState<string>('');
+
+  // Selected Batch Year State (Default: 2024 - 2028)
+  const [selectedBatch, setSelectedBatch] = useState<string>('2024 - 2028');
+
+  // Popover menu open state variables
+  const [isSectionOpen, setIsSectionOpen] = useState<boolean>(false);
+  const [isBatchOpen, setIsBatchOpen] = useState<boolean>(false);
+  
+  // Active Page State (1, 2, 3, 4, or 5)
+  const [activePage, setActivePage] = useState<number>(1);
+
+  // Profile modal visible state
+  const [showProfileModal, setShowProfileModal] = useState<boolean>(false);
+
+  // Sync tab param with page state
+  useEffect(() => {
+    if (tab === 'page1' || tab === 'dashboard' || !tab) {
+      setActivePage(1);
+    } else if (tab === 'page2') {
+      setActivePage(2);
+    } else if (tab === 'page3') {
+      setActivePage(3);
+    } else if (tab === 'page4') {
+      setActivePage(4);
+      setShowProfileModal(false);
+    } else if (tab === 'profile') {
+      setActivePage(5);
+      setShowProfileModal(false);
+    }
+  }, [tab]);
+
+  // Completed Lab Sessions Counter (Manually editable by Faculty & saved in localStorage)
+  const [sessionsCompleted, setSessionsCompleted] = useState<number>(() => {
+    const saved = localStorage.getItem(`faculty_sessions_completed_${user.id}`);
+    return saved !== null ? parseInt(saved, 10) : 8;
+  });
+
+  const handleUpdateSessionsCompleted = (val: number) => {
+    const safeVal = Math.max(0, Math.min(12, isNaN(val) ? 0 : val));
+    setSessionsCompleted(safeVal);
+    localStorage.setItem(`faculty_sessions_completed_${user.id}`, safeVal.toString());
+  };
+
+  const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    phone: '',
+    subjectName: '',
+    subjectCode: '',
+    labName: '',
+    batch: '',
+  });
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const response = await fetch(`/api/academic/faculty/${user.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${user.token}`
+        },
+        body: JSON.stringify(editForm),
+      });
+      if (response.ok) {
+        alert("Faculty profile details saved successfully!");
+        setShowEditProfileModal(false);
+        refreshData();
+      } else {
+        const data = await response.json();
+        alert(data.error || "Failed to update profile.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Network error updating profile.");
+    }
+  };
+
+  // Page 3 Toggling Mode (Observation or Record)
+  const [notebookMode, setNotebookMode] = useState<'observation' | 'record'>('observation');
+
+  // Local state for Today's Attendance (Saves marked attendance for currently filtered students)
+  const [attendanceState, setAttendanceState] = useState<{ [studentId: string]: 'Present' | 'Absent' | 'On Duty' }>({});
+  const [isAttendanceDirty, setIsAttendanceDirty] = useState(false);
+  const [isAttendanceSaving, setIsAttendanceSaving] = useState(false);
+  const [attendanceSavedMessage, setAttendanceSavedMessage] = useState<string | null>(null);
+
+  // Local state for Experiment Notebook Sign-offs
+  const [signoffState, setSignoffState] = useState<{
+    [studentId: string]: {
+      [expIndex: number]: { observation: 'none' | 'tick' | 'cross'; observationMarks?: string; record: 'none' | 'tick' | 'cross' };
+    };
+  }>({});
+
+  // Retrieve current Faculty supervisor information by email or ID
+  const facultyData = getFacultyData(user.email || user.id) || {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    department: "Artificial Intelligence & Data Science",
+    labName: "General Practical Lab",
+    batch: "General Batch",
+    subjectsHandled: []
+  };
+
+  // Get Faculty phone, subject code, etc. based on ID or defaults
+  const phoneNo = facultyData.phone || (user.id === "F01" ? "+91 94451 98721" : user.id === "F02" ? "+91 98404 12345" : "+91 91500 54321");
+  const subjectName = facultyData.subjectName || facultyData.subjectsHandled?.[0] || "General Lab";
+  const subjectCode = facultyData.subjectCode || "";
+
+  // Helper for consistent subject key construction (prefix faculty identity for strict multi-faculty isolation)
+  const codeClean = (subjectCode || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "_");
+  const nameClean = (subjectName || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "_");
+  const fidClean = (user.id || user.email || "faculty").trim().toLowerCase().replace(/[^a-z0-9]/g, "_");
+  const subPartClean = codeClean || (nameClean && nameClean !== "general_lab" ? nameClean : "general");
+  const subjectKey = `${fidClean}_${subPartClean}`;
+
+  // Restrict students to only those assigned to this faculty member / section
+  const myStudents = getFacultyStudents(user.email || user.id);
+
+  // List of all sections assigned to or handled by this faculty
+  const myTimetableSections = facultyData?.timetable?.map((slot: any) => slot.batch) || [];
+  const myStudentSections = myStudents.map((s: any) => s.section);
+  const assignedSectionLabel = facultyData?.section ? [facultyData.section] : [];
+  const rawSections = Array.from(new Set([...myTimetableSections, ...myStudentSections, ...assignedSectionLabel])).filter(Boolean).sort();
+  const availableSections = rawSections.length > 1 ? ['All Sections', ...rawSections] : (rawSections.length === 1 ? rawSections : ['Assigned Section']);
+
+  // Filter students belonging to the currently selected section
+  const sectionStudents = (!selectedSection || selectedSection === 'All' || selectedSection === 'All Sections')
+    ? myStudents
+    : myStudents.filter(
+        (student) =>
+          student.section === selectedSection ||
+          student.batchId === selectedSection ||
+          student.batch === selectedSection
+      );
+
+  // Render-phase state reset when switching user accounts to prevent state bleeding
+  const [activeUserKey, setActiveUserKey] = useState(`${user.id}_${user.email}`);
+  if (activeUserKey !== `${user.id}_${user.email}`) {
+    setActiveUserKey(`${user.id}_${user.email}`);
+    setAttendanceState({});
+    setSignoffState({});
+  }
+
+  // Synchronize selected section once available sections load
+  useEffect(() => {
+    if (availableSections.length > 0 && (!selectedSection || !availableSections.includes(selectedSection))) {
+      setSelectedSection(availableSections[0]);
+    }
+  }, [availableSections, selectedSection]);
+
+  // Synchronize state when the selected section or students list changes.
+  // On first load for a section: restore from DB. On subsequent students refreshes: only fill in missing entries.
+  useEffect(() => {
+    if (sectionStudents.length > 0) {
+      const newAttendance: Record<string, 'Present' | 'Absent' | 'On Duty'> = {};
+      const newSignoffs: Record<string, Record<number, { observation: 'none' | 'tick' | 'cross'; observationMarks?: string; record: 'none' | 'tick' | 'cross' }>> = {};
+
+      const facEmail = (user.email || "").toLowerCase();
+      const facId = (user.id || "").toLowerCase();
+      const facData = getFacultyData(user.email || user.id);
+      const dbFacId = (facData?.id || "").toLowerCase();
+      const dbFacEmail = (facData?.email || "").toLowerCase();
+
+      sectionStudents.forEach((student) => {
+        // Always preserve the in-memory state value if it already exists (avoids thrashing on students refresh).
+        // Only load from DB if this student has no local state yet for this session.
+        if (attendanceState[student.id]) {
+          newAttendance[student.id] = attendanceState[student.id];
+        } else {
+          // Find today's record strictly matching this faculty member and subject
+          const dateRecords = (student.attendanceHistory || []).filter((h: any) => h.date === today);
+          let myRecord = dateRecords.find((h: any) => {
+            const facultyMatches =
+              (h.facultyEmail && facEmail && h.facultyEmail.toLowerCase() === facEmail) ||
+              (h.facultyEmail && dbFacEmail && h.facultyEmail.toLowerCase() === dbFacEmail) ||
+              (h.facultyId && facId && h.facultyId.toLowerCase() === facId) ||
+              (h.facultyId && dbFacId && h.facultyId.toLowerCase() === dbFacId);
+            if (!facultyMatches) return false;
+            if (subjectCode && h.subjectCode && h.subjectCode.toLowerCase() !== subjectCode.toLowerCase()) return false;
+            return true;
+          });
+          if (!myRecord && dateRecords.length > 0) {
+            myRecord = dateRecords.find((h: any) => !h.facultyId && !h.facultyEmail) || dateRecords[dateRecords.length - 1];
+          }
+
+          // If this faculty has a saved record in DB, restore it. Otherwise default to Present (0 absentees).
+          newAttendance[student.id] = myRecord ? (myRecord.status as any) : 'Present';
+        }
+
+        // Build signoff state (always re-computed from latest DB data)
+        newSignoffs[student.id] = {};
+        for (let i = 1; i <= 12; i++) {
+          const targetExpId = `exp-${subjectKey}-${i}`;
+          const targetAsgId = `asg-${subjectKey}-${i}`;
+
+          const exp = student.experiments?.find((e: any) => {
+            if (e.id === targetExpId) return true;
+            const facultyMatches = (e.signedOffBy && (e.signedOffBy.toLowerCase() === facId || e.signedOffBy.toLowerCase() === facEmail || e.signedOffBy.toLowerCase() === dbFacId || e.signedOffBy.toLowerCase() === dbFacEmail)) || e.facultyId === facId || e.facultyId === dbFacId;
+            const subjectMatches = subjectCode ? (e.subjectCode && e.subjectCode.toLowerCase() === subjectCode.toLowerCase()) : true;
+            return facultyMatches && subjectMatches && (e.experimentNumber === i || e.id?.endsWith(`-${i}`));
+          });
+          const asg = student.assignments?.find((a: any) => {
+            if (a.id === targetAsgId) return true;
+            const facultyMatches = (a.gradedBy && (a.gradedBy.toLowerCase() === facId || a.gradedBy.toLowerCase() === facEmail || a.gradedBy.toLowerCase() === dbFacId || a.gradedBy.toLowerCase() === dbFacEmail)) || a.facultyId === facId || a.facultyId === dbFacId;
+            const subjectMatches = subjectCode ? (a.subjectCode && a.subjectCode.toLowerCase() === subjectCode.toLowerCase()) : true;
+            return facultyMatches && subjectMatches && (a.experimentNumber === i || a.id?.endsWith(`-${i}`));
+          });
+
+          newSignoffs[student.id][i] = {
+            observation: exp ? (exp.status === 'Approved' ? 'tick' : (exp.status === 'Rejected' ? 'cross' : 'none')) : 'none',
+            observationMarks: exp ? (exp.score !== undefined && exp.score > 0 ? exp.score.toString() : (exp.status === 'Approved' ? '10' : '')) : '',
+            record: asg ? (asg.status === 'Rejected' ? 'cross' : (asg.status === 'Unsigned' || asg.status === 'none' ? 'none' : 'tick')) : 'none'
+          };
+        }
+      });
+
+      setAttendanceState(newAttendance);
+      setSignoffState(newSignoffs);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSection, students, subjectKey, user.id, user.email]);
+
+  // Live Statistics Calculations for Page 1
+  const totalStudents = sectionStudents.length;
+  const presentCount = sectionStudents.filter(s => attendanceState[s.id] === 'Present').length;
+  const absentCount = sectionStudents.filter(s => attendanceState[s.id] === 'Absent').length;
+  const odCount = sectionStudents.filter(s => attendanceState[s.id] === 'On Duty').length;
+  const attendancePercentage = totalStudents > 0 ? Math.round(((presentCount + odCount) / totalStudents) * 100) : 0;
+
+  // Signed Student Counts for Selected Section (Counts how many students got signature)
+  const studentsWithObservationSigned = sectionStudents.filter(student => {
+    return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].some(expIdx => {
+      const state = signoffState[student.id]?.[expIdx];
+      return state?.observation === 'tick' || (state?.observationMarks !== undefined && state?.observationMarks !== '' && state?.observationMarks !== null);
+    });
+  }).length;
+
+  const studentsWithRecordSigned = sectionStudents.filter(student => {
+    return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].some(expIdx => {
+      return signoffState[student.id]?.[expIdx]?.record === 'tick';
+    });
+  }).length;
+
+  // Toggle present/absent/on duty today (Buffers changes locally until Confirm is clicked)
+  const handleToggleAttendance = (studentId: string, status: 'Present' | 'Absent' | 'On Duty') => {
+    setAttendanceState(prev => ({
+      ...prev,
+      [studentId]: status
+    }));
+    setIsAttendanceDirty(true);
+    setAttendanceSavedMessage(null);
+  };
+
+  // Helper to mark all currently filtered section students as Present locally
+  const handleMarkAllPresentDashboard = () => {
+    const updated: Record<string, 'Present'> = {};
+    sectionStudents.forEach((st) => {
+      updated[st.id] = 'Present';
+    });
+    setAttendanceState(prev => ({ ...prev, ...updated }));
+    setIsAttendanceDirty(true);
+    setAttendanceSavedMessage(null);
+  };
+
+  // Confirm & Save Attendance to Database and sync overview stats
+  const handleConfirmAttendanceDashboard = async () => {
+    if (sectionStudents.length === 0) return;
+    setIsAttendanceSaving(true);
+    setAttendanceSavedMessage(null);
+
+    const facEmail = (user.email || "").toLowerCase();
+    const facId = (user.id || "").toLowerCase();
+    const facData = getFacultyData(user.email || user.id);
+    const dbFacId = (facData?.id || "").toLowerCase();
+    const dbFacEmail = (facData?.email || "").toLowerCase();
+
+    try {
+      const itemsToSave = sectionStudents.map((student) => {
+        const dateRecords = (student.attendanceHistory || []).filter((h: any) => h.date === today);
+        let myRecord = dateRecords.find((h: any) => {
+          const facultyMatches =
+            (h.facultyEmail && facEmail && h.facultyEmail.toLowerCase() === facEmail) ||
+            (h.facultyEmail && dbFacEmail && h.facultyEmail.toLowerCase() === dbFacEmail) ||
+            (h.facultyId && facId && h.facultyId.toLowerCase() === facId) ||
+            (h.facultyId && dbFacId && h.facultyId.toLowerCase() === dbFacId);
+          if (!facultyMatches) return false;
+          if (subjectCode && h.subjectCode && h.subjectCode.toLowerCase() !== subjectCode.toLowerCase()) return false;
+          return true;
+        });
+        if (!myRecord && dateRecords.length > 0) {
+          myRecord = dateRecords.find((h: any) => !h.facultyId && !h.facultyEmail) || dateRecords[dateRecords.length - 1];
+        }
+
+        const statusToSave = attendanceState[student.id] || (myRecord ? myRecord.status : 'Present');
+        return { studentId: student.id, status: statusToSave };
+      });
+
+      await updateBatchStudentAttendance(itemsToSave, today, subjectCode, subjectName);
+      await refreshData();
+
+      setIsAttendanceDirty(false);
+      setAttendanceSavedMessage("Attendance confirmed and saved successfully to database & overview!");
+      setTimeout(() => setAttendanceSavedMessage(null), 4000);
+    } catch (err) {
+      console.error("Error saving attendance:", err);
+      alert("Failed to save attendance. Please try again.");
+    } finally {
+      setIsAttendanceSaving(false);
+    }
+  };
+
+  // Toggle observation or record checked sign: 'tick' -> 'cross' -> 'none' -> 'tick'
+  const handleToggleSignoff = async (studentId: string, expIdx: number, type: 'observation' | 'record') => {
+    const studentState = signoffState[studentId] || {};
+    const expState = studentState[expIdx] || { observation: 'none', record: 'tick' };
+    const currentVal = expState[type];
+    
+    let newVal: 'none' | 'tick' | 'cross' = 'tick';
+    if (currentVal === 'tick') {
+      newVal = 'cross';
+    } else if (currentVal === 'cross') {
+      newVal = 'none';
+    } else if (currentVal === 'none') {
+      newVal = 'tick';
+    }
+
+    setSignoffState(prev => ({
+      ...prev,
+      [studentId]: {
+        ...studentState,
+        [expIdx]: {
+          ...expState,
+          [type]: newVal
+        }
+      }
+    }));
+
+    try {
+      if (type === 'observation') {
+        await updateSignoff(studentId, expIdx, { observationStatus: newVal, subjectCode, subjectName });
+      } else {
+        await updateSignoff(studentId, expIdx, { recordStatus: newVal, subjectCode, subjectName });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleLocalMarksChange = (studentId: string, expIdx: number, value: string) => {
+    const trimmed = value.trim().toUpperCase();
+    let obsStatus: 'none' | 'tick' | 'cross' = 'none';
+    if (trimmed === 'A' || trimmed === 'ABSENT' || trimmed === 'X' || trimmed === 'CROSS' || trimmed === 'WRONG') {
+      obsStatus = 'cross';
+    } else if (trimmed === 'OD' || trimmed === 'ON DUTY' || trimmed !== '') {
+      obsStatus = 'tick';
+    }
+
+    setSignoffState(prev => {
+      const studentState = prev[studentId] || {};
+      const expState = studentState[expIdx] || { observation: 'none', record: 'none' };
+      return {
+        ...prev,
+        [studentId]: {
+          ...studentState,
+          [expIdx]: {
+            ...expState,
+            observationMarks: value.toUpperCase(),
+            observation: obsStatus
+          }
+        }
+      };
+    });
+  };
+
+  const handleSaveMarks = async (studentId: string, expIdx: number, value: string) => {
+    const trimmed = value.trim().toUpperCase();
+    let obsStatus: 'none' | 'tick' | 'cross' | 'absent' | 'od' = 'none';
+    let finalMark = trimmed;
+
+    if (trimmed === 'A' || trimmed === 'ABSENT') {
+      obsStatus = 'absent';
+      finalMark = 'A';
+    } else if (trimmed === 'OD' || trimmed === 'ON DUTY') {
+      obsStatus = 'od';
+      finalMark = 'OD';
+    } else if (trimmed === 'X' || trimmed === 'CROSS' || trimmed === 'WRONG') {
+      obsStatus = 'cross';
+      finalMark = 'X';
+    } else if (trimmed !== '') {
+      const num = Number(trimmed);
+      if (isNaN(num) || num < 0 || num > 10) {
+        alert("Observation marks must be a number between 0 and 10, or 'A' for Absent, 'OD' for On Duty, 'X' for Wrong.");
+        return;
+      }
+      obsStatus = 'tick';
+      finalMark = trimmed;
+    }
+
+    setSignoffState(prev => {
+      const studentState = prev[studentId] || {};
+      const expState = studentState[expIdx] || { observation: 'none', record: 'none' };
+      return {
+        ...prev,
+        [studentId]: {
+          ...studentState,
+          [expIdx]: {
+            ...expState,
+            observationMarks: finalMark,
+            observation: obsStatus === 'cross' || obsStatus === 'absent' ? 'cross' : (obsStatus === 'none' ? 'none' : 'tick')
+          }
+        }
+      };
+    });
+
+    try {
+      await updateSignoff(studentId, expIdx, {
+        observationMarks: finalMark,
+        observationStatus: obsStatus,
+        subjectCode,
+        subjectName
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // CSV Export helper function using Blob
+  const triggerExcelExport = (headers: string[], rows: string[][], fileName: string) => {
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.map(cell => `"${(cell || '').toString().replace(/"/g, '""')}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", fileName);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Export Page 2 (Attendance) to Excel (CSV)
+  const handleExportAttendance = () => {
+    const headers = ['S.No', 'Roll No', 'Student Name', 'Register Number', 'Attendance Status'];
+    const rows = sectionStudents.map((st, idx) => [
+      (idx + 1).toString(),
+      st.rollNo,
+      st.name,
+      st.registerNo,
+      attendanceState[st.id] || 'Present'
+    ]);
+    triggerExcelExport(headers, rows, `Attendance_Report_${selectedSection}.csv`);
+  };
+
+  // Export Observation Records to formatted Excel (.xlsx) spreadsheet
+  const handleExportObservationExcel = () => {
+    try {
+      const titleRows = [
+        ['PANIMALAR ENGINEERING COLLEGE'],
+        ['DEPARTMENT OF ARTIFICIAL INTELLIGENCE & DATA SCIENCE'],
+        [`LABORATORY OBSERVATION RECORDS & MARKS REPORT — SECTION ${selectedSection}`],
+        [`Subject: ${subjectName}${subjectCode ? ` (${subjectCode})` : ''} | Batch: ${selectedBatch} | Date: ${new Date().toLocaleDateString()}`],
+        [] // blank row
+      ];
+
+      const headers = [
+        'S.NO', 'ROLL NO', 'REGISTER NUMBER', 'STUDENT NAME',
+        'EXP 1 MARKS', 'EXP 1 STATUS',
+        'EXP 2 MARKS', 'EXP 2 STATUS',
+        'EXP 3 MARKS', 'EXP 3 STATUS',
+        'EXP 4 MARKS', 'EXP 4 STATUS',
+        'EXP 5 MARKS', 'EXP 5 STATUS',
+        'EXP 6 MARKS', 'EXP 6 STATUS',
+        'EXP 7 MARKS', 'EXP 7 STATUS',
+        'EXP 8 MARKS', 'EXP 8 STATUS',
+        'EXP 9 MARKS', 'EXP 9 STATUS',
+        'EXP 10 MARKS', 'EXP 10 STATUS',
+        'EXP 11 MARKS', 'EXP 11 STATUS',
+        'EXP 12 MARKS', 'EXP 12 STATUS',
+        'TOTAL OBSERVATION MARKS', 'AVERAGE MARKS', 'SIGNATURE STATUS'
+      ];
+
+      const studentRows = sectionStudents.map((st, idx) => {
+        let totalMarks = 0;
+        let evalCount = 0;
+        let hasSignature = false;
+
+        const row: any[] = [idx + 1, st.rollNo, st.registerNo, st.name];
+
+        for (let expIdx = 1; expIdx <= 12; expIdx++) {
+          const state = signoffState[st.id]?.[expIdx];
+          const markStr = state?.observationMarks;
+          const markNum = markStr !== undefined && markStr !== '' && markStr !== null ? Number(markStr) : null;
+          
+          const obsVal = state?.observation || 'none';
+          const statusText = obsVal === 'tick' ? 'Signed' : (obsVal === 'cross' ? 'Rejected' : 'Pending');
+
+          if (markNum !== null && !isNaN(markNum)) {
+            totalMarks += markNum;
+            evalCount++;
+          }
+          if (obsVal === 'tick' || markNum !== null) {
+            hasSignature = true;
+          }
+
+          row.push(markNum !== null ? markNum : '-', statusText);
+        }
+
+        const avgMarks = evalCount > 0 ? (totalMarks / evalCount).toFixed(1) : '-';
+        row.push(totalMarks, avgMarks, hasSignature ? 'Signed' : 'Not Signed');
+        return row;
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet([...titleRows, headers, ...studentRows]);
+
+      ws['!cols'] = [
+        { wch: 6 },  // S.No
+        { wch: 12 }, // Roll No
+        { wch: 16 }, // Register No
+        { wch: 25 }, // Name
+        ...Array(24).fill({ wch: 12 }),
+        { wch: 24 }, // Total Marks
+        { wch: 14 }, // Avg Marks
+        { wch: 18 }, // Signature Status
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, `Observation_Records`);
+
+      XLSX.writeFile(wb, `Observation_Records_Section_${selectedSection}.xlsx`);
+    } catch (err) {
+      console.error("Excel export error:", err);
+      handleExportSignoffMatrix();
+    }
+  };
+
+  // Export Page 3 (Sign-off Matrix) to Excel (CSV)
+  const handleExportSignoffMatrix = () => {
+    const headers = [
+      'S.No', 'Roll No', 'Student Name', 'Register Number',
+      'W1-E1 Obs', 'W1-E1 Rec', 'W1-E2 Obs', 'W1-E2 Rec',
+      'W2-E3 Obs', 'W2-E3 Rec', 'W2-E4 Obs', 'W2-E4 Rec',
+      'W3-E5 Obs', 'W3-E5 Rec', 'W3-E6 Obs', 'W3-E6 Rec',
+      'W4-E7 Obs', 'W4-E7 Rec', 'W4-E8 Obs', 'W4-E8 Rec',
+      'W5-E9 Obs', 'W5-E9 Rec', 'W5-E10 Obs', 'W5-E10 Rec',
+      'W6-E11 Obs', 'W6-E11 Rec', 'W6-E12 Obs', 'W6-E12 Rec'
+    ];
+
+    const rows = sectionStudents.map((st, idx) => {
+      const row = [(idx + 1).toString(), st.rollNo, st.name, st.registerNo];
+      for (let expIdx = 1; expIdx <= 12; expIdx++) {
+        const obsVal = signoffState[st.id]?.[expIdx]?.observation || 'none';
+        const recVal = signoffState[st.id]?.[expIdx]?.record || 'none';
+        const obs = obsVal === 'tick' ? 'Signed' : (obsVal === 'cross' ? 'Incorrect' : 'Pending');
+        const rec = recVal === 'tick' ? 'Signed' : (recVal === 'cross' ? 'Incorrect' : 'Pending');
+        row.push(obs, rec);
+      }
+      return row;
+    });
+
+    triggerExcelExport(headers, rows, `Lab_Signoff_Report_${selectedSection}.csv`);
+  };
+
+  // Prepare Histogram Data for Page 4
+  // 1. Attendance ranges
+  let attendanceHigh = 0; // 90%+
+  let attendanceMedium = 0; // 75-89%
+  let attendanceLow = 0; // <75%
+
+  sectionStudents.forEach(st => {
+    const att = attendanceState[st.id] === 'Present' ? 100 : 0;
+    // or calculate based on their overall attendance history
+    const overallAtt = st.attendance;
+    if (overallAtt >= 90) attendanceHigh++;
+    else if (overallAtt >= 75) attendanceMedium++;
+    else attendanceLow++;
+  });
+
+  const attendanceHistogramData = [
+    { range: 'High (>=90%)', Students: attendanceHigh, fill: '#059669' },
+    { range: 'Mid (75-89%)', Students: attendanceMedium, fill: '#3b82f6' },
+    { range: 'Low (<75%)', Students: attendanceLow, fill: '#ef4444' }
+  ];
+
+  // 2. Observations and Records Completion Counts histogram
+  // Group students by how many notebooks they have completed (out of 12)
+  let obs_10_12 = 0;
+  let obs_7_9 = 0;
+  let obs_4_6 = 0;
+  let obs_0_3 = 0;
+
+  let rec_10_12 = 0;
+  let rec_7_9 = 0;
+  let rec_4_6 = 0;
+  let rec_0_3 = 0;
+
+  sectionStudents.forEach(st => {
+    let studentObs = 0;
+    let studentRec = 0;
+    for (let expIdx = 1; expIdx <= 12; expIdx++) {
+      if (signoffState[st.id]?.[expIdx]?.observation === 'tick') studentObs++;
+      if (signoffState[st.id]?.[expIdx]?.record === 'tick') studentRec++;
+    }
+
+    if (studentObs >= 10) obs_10_12++;
+    else if (studentObs >= 7) obs_7_9++;
+    else if (studentObs >= 4) obs_4_6++;
+    else obs_0_3++;
+
+    if (studentRec >= 10) rec_10_12++;
+    else if (studentRec >= 7) rec_7_9++;
+    else if (studentRec >= 4) rec_4_6++;
+    else rec_0_3++;
+  });
+
+  const signoffHistogramData = [
+    { name: '10-12 Exp', Observations: obs_10_12, Records: rec_10_12 },
+    { name: '7-9 Exp', Observations: obs_7_9, Records: rec_7_9 },
+    { name: '4-6 Exp', Observations: obs_4_6, Records: rec_4_6 },
+    { name: '0-3 Exp', Observations: obs_0_3, Records: rec_0_3 }
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* HEADER BAR */}
+      <div className="bg-gradient-to-r from-blue-950 to-[#0B192C] text-white p-6 rounded-3xl border border-blue-900/40 shadow-xl relative overflow-hidden">
+        <div className="absolute right-0 top-0 opacity-10 pointer-events-none transform translate-x-12 -translate-y-12">
+          <Building className="w-96 h-96" />
+        </div>
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <span className="px-3 py-1 bg-blue-500/20 text-blue-300 text-[10px] font-bold rounded-full uppercase tracking-widest border border-blue-500/30">
+              Departmental ERP Console
+            </span>
+            <h1 className="text-2xl md:text-3xl font-black mt-2 tracking-tight">
+              Panimalar Faculty Dashboard
+            </h1>
+            <p className="text-xs text-slate-300 mt-1 font-medium">
+              Welcome, <span className="text-blue-300 font-extrabold">{facultyData.name}</span> &bull; Academic Year 2026-2027
+            </p>
+          </div>
+          <div className="flex items-center gap-3 bg-slate-800/40 border border-slate-700/50 p-3 rounded-2xl">
+            <Clock className="w-5 h-5 text-blue-400" />
+            <div className="text-left font-mono">
+              <p className="text-xs font-bold text-slate-100">AI & DS Labs</p>
+              <p className="text-[10px] text-slate-400">System Clock Sync Active</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* LAB SESSION NOTIFICATION BANNER */}
+      {(() => {
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const today = days[new Date().getDay()];
+        const todaySessions = (facultyData.timetable || []).filter(
+          (slot: any) => slot.day?.toLowerCase() === today.toLowerCase()
+        );
+
+        // Request browser notification permission and send notification
+        if (todaySessions.length > 0 && typeof window !== 'undefined' && 'Notification' in window) {
+          if (Notification.permission === 'default') {
+            Notification.requestPermission();
+          }
+          // Send notification only once per session (use sessionStorage to track)
+          const notifKey = `lab-notif-${user.id}-${today}`;
+          if (Notification.permission === 'granted' && !sessionStorage.getItem(notifKey)) {
+            sessionStorage.setItem(notifKey, 'sent');
+            todaySessions.forEach((slot: any) => {
+              new Notification(`Lab Session Today - ${slot.lab || 'Lab'}`, {
+                body: `${slot.time} \u2022 ${slot.batch} \u2022 Room: ${slot.room}`,
+                icon: '/favicon.ico',
+              });
+            });
+          }
+        }
+
+        if (todaySessions.length === 0) return null;
+        return (
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-amber-100 text-amber-700 rounded-xl shrink-0 mt-0.5">
+                <Bell className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-sm font-extrabold text-amber-900 flex items-center gap-2">
+                  Active Lab Session{todaySessions.length > 1 ? 's' : ''} Today
+                  <span className="inline-flex items-center justify-center w-5 h-5 bg-amber-600 text-white rounded-full text-[10px] font-black">
+                    {todaySessions.length}
+                  </span>
+                </h4>
+                <div className="mt-2 space-y-1.5">
+                  {todaySessions.map((slot: any, i: number) => (
+                    <div key={i} className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="px-2 py-0.5 bg-amber-200/60 text-amber-900 rounded-lg font-bold">{slot.time}</span>
+                      <span className="font-bold text-slate-700">{slot.lab || 'Lab Session'}</span>
+                      <span className="text-slate-400">&bull;</span>
+                      <span className="text-slate-600">Batch: <strong>{slot.batch}</strong></span>
+                      <span className="text-slate-400">&bull;</span>
+                      <span className="text-slate-600">Room: <strong>{slot.room}</strong></span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-amber-600 mt-2 font-medium">
+                  Browser notifications enabled • You will be alerted for upcoming sessions.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+
+
+      {/* =======================================================
+          PAGE 1: SECTION OVERVIEW & STATISTICS SUMMARY
+          ======================================================= */}
+      {activePage === 1 && (
+        <div className="space-y-6">
+          {/* ADMIN ASSIGNED ACADEMIC PROFILE BANNER */}
+          <div className="bg-gradient-to-r from-indigo-900 via-indigo-850 to-slate-900 text-white rounded-3xl p-6 shadow-md border border-indigo-700/40">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-indigo-500/20 text-indigo-300 rounded-2xl flex items-center justify-center font-black text-xl border border-indigo-400/30 shrink-0 shadow-inner">
+                  {facultyData.name?.charAt(0) || 'F'}
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
+                    {facultyData.name}
+                    <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-[10px] font-bold rounded-full border border-emerald-500/30 uppercase">
+                      Activated & Verified
+                    </span>
+                  </h3>
+                  <p className="text-xs text-indigo-200/90 font-medium flex items-center gap-2 mt-0.5">
+                    <Mail className="w-3.5 h-3.5 text-indigo-400" /> {facultyData.email}
+                    {phoneNo && <><span>•</span> <Phone className="w-3.5 h-3.5 text-indigo-400" /> {phoneNo}</>}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-white/10 backdrop-blur-xs p-3 rounded-2xl border border-white/10 text-center">
+                  <p className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Assigned Lab</p>
+                  <p className="text-xs font-extrabold text-white mt-0.5 truncate">{facultyData.labName || 'General Lab'}</p>
+                </div>
+                <div className="bg-white/10 backdrop-blur-xs p-3 rounded-2xl border border-white/10 text-center">
+                  <p className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Subject & Code</p>
+                  <p className="text-xs font-extrabold text-white mt-0.5 truncate">{subjectName} ({subjectCode})</p>
+                </div>
+                <div className="bg-white/10 backdrop-blur-xs p-3 rounded-2xl border border-white/10 text-center">
+                  <p className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Assigned Section</p>
+                  <p className="text-xs font-extrabold text-emerald-300 mt-0.5 truncate">{facultyData.section || availableSections[0] || 'Section A'}</p>
+                </div>
+                <div className="bg-white/10 backdrop-blur-xs p-3 rounded-2xl border border-white/10 text-center">
+                  <p className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Section Students</p>
+                  <p className="text-xs font-extrabold text-amber-300 mt-0.5">{myStudents.length} Enrolled</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          {/* SECTION CONTROLLERS */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">
+                  Choose Target Batch / Section
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Select a section to retrieve student details and laboratory status.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {/* BATCH SELECTOR (POPPING DROPDOWN) */}
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setIsBatchOpen(!isBatchOpen);
+                      setIsSectionOpen(false);
+                    }}
+                    className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-800 font-extrabold text-xs rounded-2xl border border-slate-200/60 flex items-center gap-2 transition cursor-pointer shadow-sm active:scale-95"
+                  >
+                    <Calendar className="w-4 h-4 text-blue-600" />
+                    <span>Batch: {selectedBatch}</span>
+                    <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${isBatchOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  
+                  {isBatchOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setIsBatchOpen(false)} />
+                      <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 p-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
+                        {['2024 - 2028', '2023 - 2027', '2022 - 2026', '2025 - 2029'].map((batchOption) => (
+                          <button
+                            key={batchOption}
+                            onClick={() => {
+                              setSelectedBatch(batchOption);
+                              setIsBatchOpen(false);
+                            }}
+                            className={`w-full text-left px-3.5 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer ${
+                              selectedBatch === batchOption
+                                ? 'bg-blue-50 text-blue-600'
+                                : 'text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            Batch {batchOption}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* SECTION SELECTOR (POPPING DROPDOWN) */}
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setIsSectionOpen(!isSectionOpen);
+                      setIsBatchOpen(false);
+                    }}
+                    className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-800 font-extrabold text-xs rounded-2xl border border-slate-200/60 flex items-center gap-2 transition cursor-pointer shadow-sm active:scale-95"
+                  >
+                    <Users className="w-4 h-4 text-indigo-600" />
+                    <span>Section: {selectedSection}</span>
+                    <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${isSectionOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isSectionOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setIsSectionOpen(false)} />
+                      <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 p-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
+                        {availableSections.map((sect) => (
+                          <button
+                            key={sect}
+                            onClick={() => {
+                              setSelectedSection(sect);
+                              setIsSectionOpen(false);
+                            }}
+                            className={`w-full text-left px-3.5 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer ${
+                              selectedSection === sect
+                                ? 'bg-indigo-50 text-indigo-600'
+                                : 'text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            Section {sect}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* KPI STATS BOARD */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
+              <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl">
+                <Users className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Total Students</p>
+                <h4 className="text-2xl font-black text-slate-800 mt-1">{totalStudents}</h4>
+                <p className="text-[10px] text-blue-600 font-semibold mt-0.5">In section {selectedSection}</p>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
+              <div className="p-4 bg-emerald-50 text-emerald-600 rounded-2xl">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Present Today</p>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <h4 className="text-2xl font-black text-slate-800">{presentCount}</h4>
+                  {odCount > 0 && <span className="text-xs font-bold text-amber-600">(+{odCount} OD)</span>}
+                </div>
+                <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">{attendancePercentage}% Attendance</p>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
+              <div className="p-4 bg-rose-50 text-rose-600 rounded-2xl">
+                <XCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Absent Today</p>
+                <h4 className="text-2xl font-black text-slate-800 mt-1">{absentCount}</h4>
+                <p className="text-[10px] text-rose-600 font-semibold mt-0.5">Absentees logged</p>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
+              <div className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl">
+                <FileCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Sessions Completed</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    type="number"
+                    min={0}
+                    max={12}
+                    value={sessionsCompleted}
+                    onChange={(e) => handleUpdateSessionsCompleted(parseInt(e.target.value, 10))}
+                    className="w-14 text-center font-black text-2xl text-indigo-950 bg-indigo-50/70 border border-indigo-200 rounded-xl py-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <div className="flex flex-col gap-0.5">
+                    <button 
+                      onClick={() => handleUpdateSessionsCompleted(sessionsCompleted + 1)}
+                      className="w-5 h-3.5 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 text-[10px] font-black rounded flex items-center justify-center cursor-pointer"
+                    >
+                      +
+                    </button>
+                    <button 
+                      onClick={() => handleUpdateSessionsCompleted(sessionsCompleted - 1)}
+                      className="w-5 h-3.5 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 text-[10px] font-black rounded flex items-center justify-center cursor-pointer"
+                    >
+                      -
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[10px] text-indigo-600 font-semibold mt-0.5">Out of 12 exercises</p>
+              </div>
+            </div>
+          </div>
+
+          {/* SIGN-OFF COUNTS SUMMARY CARD */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-gradient-to-tr from-emerald-50/50 to-teal-50/20 p-6 rounded-3xl border border-emerald-100/50 shadow-sm space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-500 text-white rounded-xl">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-slate-800 text-sm">Signed Observation Notebooks</h4>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Students with Signature</p>
+                </div>
+              </div>
+              <div className="pt-2 flex items-baseline gap-2">
+                <span className="text-4xl font-black text-slate-800">{studentsWithObservationSigned}</span>
+                <span className="text-base font-extrabold text-slate-400">/ {totalStudents}</span>
+                <span className="text-xs text-emerald-700 font-bold ml-1.5 bg-emerald-100/60 px-2.5 py-1 rounded-lg">
+                  Students Signed
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <div className="text-[11px] text-emerald-700 bg-emerald-50/80 p-3 rounded-xl font-medium border border-emerald-100/40 flex-1">
+                  Shows how many unique students got observation signatures in section {selectedSection}.
+                </div>
+                <button
+                  onClick={handleExportObservationExcel}
+                  className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition shadow-sm shrink-0 active:scale-95"
+                  title="Download Observation Records as Excel Sheet"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Excel</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-tr from-blue-50/50 to-indigo-50/20 p-6 rounded-3xl border border-blue-100/50 shadow-sm space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-blue-500 text-white rounded-xl">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-slate-800 text-sm">Signed Record Notebooks</h4>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Students with Signature</p>
+                </div>
+              </div>
+              <div className="pt-2 flex items-baseline gap-2">
+                <span className="text-4xl font-black text-slate-800">{studentsWithRecordSigned}</span>
+                <span className="text-base font-extrabold text-slate-400">/ {totalStudents}</span>
+                <span className="text-xs text-blue-700 font-bold ml-1.5 bg-blue-100/60 px-2.5 py-1 rounded-lg">
+                  Students Signed
+                </span>
+              </div>
+              <div className="text-[11px] text-blue-700 bg-blue-50/80 p-3 rounded-xl font-medium border border-blue-100/40">
+                Shows how many unique students got final record signatures in section {selectedSection}.
+              </div>
+            </div>
+          </div>
+
+          {/* FACULTY CARD SUMMARY */}
+          <div className="bg-slate-900 text-white p-6 rounded-3xl border border-slate-800 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center font-black text-lg shadow-inner">
+                {facultyData.name.charAt(3) || "F"}
+              </div>
+              <div>
+                <p className="text-xs text-blue-400 font-extrabold tracking-widest uppercase">Assigned Faculty Supervisor</p>
+                <h4 className="text-lg font-bold text-slate-50">{facultyData.name}</h4>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-4 text-xs font-mono text-slate-300">
+              <div className="bg-slate-800/80 px-3.5 py-2 rounded-xl border border-slate-700/50">
+                <span className="text-slate-500">SUBJECT:</span> {subjectName}
+              </div>
+              <div className="bg-slate-800/80 px-3.5 py-2 rounded-xl border border-slate-700/50">
+                <span className="text-slate-500">LAB:</span> {facultyData.labName}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =======================================================
+          PAGE 2: ATTENDANCE REGISTRY SHEET & LOGGING
+          ======================================================= */}
+      {activePage === 2 && (
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-extrabold text-slate-800">Lab Attendance Registry</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Mark students present or absent for today's lab session, and export to Excel.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              {/* BATCH SELECTOR (POPPING DROPDOWN) */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setIsBatchOpen(!isBatchOpen);
+                    setIsSectionOpen(false);
+                  }}
+                  className="px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-800 font-extrabold text-xs rounded-xl border border-slate-200/60 flex items-center gap-2 transition cursor-pointer shadow-sm active:scale-95"
+                >
+                  <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Batch: {selectedBatch}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${isBatchOpen ? 'rotate-180' : ''}`} />
+                </button>
+                
+                {isBatchOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setIsBatchOpen(false)} />
+                    <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 p-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
+                      {['2024 - 2028', '2023 - 2027', '2022 - 2026', '2025 - 2029'].map((batchOption) => (
+                        <button
+                          key={batchOption}
+                          onClick={() => {
+                            setSelectedBatch(batchOption);
+                            setIsBatchOpen(false);
+                          }}
+                          className={`w-full text-left px-3.5 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer ${
+                            selectedBatch === batchOption
+                              ? 'bg-blue-50 text-blue-600'
+                              : 'text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          Batch {batchOption}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* SECTION SELECTOR (POPPING DROPDOWN) */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setIsSectionOpen(!isSectionOpen);
+                    setIsBatchOpen(false);
+                  }}
+                  className="px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-800 font-extrabold text-xs rounded-xl border border-slate-200/60 flex items-center gap-2 transition cursor-pointer shadow-sm active:scale-95"
+                >
+                  <Users className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Section: {selectedSection}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${isSectionOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isSectionOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setIsSectionOpen(false)} />
+                    <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 p-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
+                      {availableSections.map((sect) => (
+                        <button
+                          key={sect}
+                          onClick={() => {
+                            setSelectedSection(sect);
+                            setIsSectionOpen(false);
+                          }}
+                          className={`w-full text-left px-3.5 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer ${
+                            selectedSection === sect
+                              ? 'bg-indigo-50 text-indigo-600'
+                              : 'text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          Section {sect}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <button
+                onClick={handleMarkAllPresentDashboard}
+                className="py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer border border-slate-200"
+              >
+                <span>Mark All Present</span>
+              </button>
+
+              <button
+                onClick={handleConfirmAttendanceDashboard}
+                disabled={isAttendanceSaving || sectionStudents.length === 0}
+                className={`py-2.5 px-5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 shadow-md cursor-pointer ${
+                  isAttendanceSaving
+                    ? 'bg-slate-400 text-white cursor-not-allowed'
+                    : isAttendanceDirty
+                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white ring-2 ring-indigo-500/30 shadow-indigo-600/20 animate-pulse'
+                    : 'bg-indigo-700 hover:bg-indigo-800 text-white shadow-indigo-700/20'
+                }`}
+              >
+                {isAttendanceSaving ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{isAttendanceDirty ? 'Confirm & Save Attendance' : 'Attendance Confirmed'}</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={handleExportAttendance}
+                className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-md shadow-emerald-600/10"
+              >
+                <Download className="w-4 h-4" />
+                <span>Export</span>
+              </button>
+            </div>
+          </div>
+
+          {/* ATTENDANCE SAVED SUCCESS BANNER */}
+          {attendanceSavedMessage && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-6 py-3.5 text-xs font-bold text-emerald-800 flex items-center justify-between shadow-sm animate-fade-in">
+              <span className="flex items-center gap-2">
+                <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600" />
+                {attendanceSavedMessage}
+              </span>
+              <span className="text-[10px] text-emerald-600 uppercase font-black tracking-wider">Synced to Database & Overview</span>
+            </div>
+          )}
+
+          {/* ATTENDANCE MATRIX TABLE */}
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 text-[10px] font-extrabold uppercase tracking-wider">
+                    <th className="px-6 py-4 text-center">S.No</th>
+                    <th className="px-6 py-4">Roll No</th>
+                    <th className="px-6 py-4">Student Name</th>
+                    <th className="px-6 py-4">Register Number</th>
+                    <th className="px-6 py-4 text-center">Attendance Status today</th>
+                    <th className="px-6 py-4 text-center">Quick Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50 text-xs">
+                  {sectionStudents.map((st, idx) => {
+                    const status = attendanceState[st.id] || 'Present';
+                    return (
+                      <tr key={st.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-4 text-center font-bold text-slate-400">{idx + 1}</td>
+                        <td className="px-6 py-4 font-mono font-bold text-slate-700">{st.rollNo}</td>
+                        <td className="px-6 py-4">
+                          <div className="font-extrabold text-slate-800 text-sm">{st.name}</div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">{st.email}</div>
+                        </td>
+                        <td className="px-6 py-4 font-semibold text-slate-500">{st.registerNo}</td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wide border ${
+                            status === 'Present' 
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                              : status === 'On Duty'
+                              ? 'bg-amber-50 text-amber-700 border-amber-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                          }`}>
+                            {status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex justify-center items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleAttendance(st.id, 'Present')}
+                              className={`px-3.5 py-1.5 text-[10px] font-black rounded-lg transition-all cursor-pointer ${
+                                status === 'Present'
+                                  ? 'bg-emerald-600 text-white shadow-sm'
+                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-500'
+                              }`}
+                            >
+                              Present
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleAttendance(st.id, 'Absent')}
+                              className={`px-3.5 py-1.5 text-[10px] font-black rounded-lg transition-all cursor-pointer ${
+                                status === 'Absent'
+                                  ? 'bg-rose-600 text-white shadow-sm'
+                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-500'
+                              }`}
+                            >
+                              Absent
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleAttendance(st.id, 'On Duty')}
+                              className={`px-3.5 py-1.5 text-[10px] font-black rounded-lg transition-all cursor-pointer ${
+                                status === 'On Duty'
+                                  ? 'bg-amber-600 text-white shadow-sm'
+                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-500'
+                              }`}
+                            >
+                              On Duty
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {sectionStudents.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-semibold text-sm">
+                        No students enrolled in section {selectedSection}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =======================================================
+          PAGE 3: 6-WEEK LAB EXERCISE SIGN-OFF MATRIX
+          ======================================================= */}
+      {activePage === 3 && (
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4">
+              <div>
+                <h2 className="text-lg font-extrabold text-slate-800">6-Week experiment completion</h2>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  <p className="text-xs text-slate-400">
+                    Check off experiment approvals. Tap cells to toggle status (✔ Signed / ✖ Pending).
+                  </p>
+                  <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200/80 px-2.5 py-1 rounded-xl">
+                    <span className="text-[11px] font-extrabold text-indigo-900 uppercase">Sessions Completed:</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={12}
+                      value={sessionsCompleted}
+                      onChange={(e) => handleUpdateSessionsCompleted(parseInt(e.target.value, 10))}
+                      className="w-10 text-center font-black text-xs text-indigo-950 bg-white border border-indigo-300 rounded-lg py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-bold text-indigo-600">/ 12</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                {/* BATCH SELECTOR (POPPING DROPDOWN) */}
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setIsBatchOpen(!isBatchOpen);
+                      setIsSectionOpen(false);
+                    }}
+                    className="px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-800 font-extrabold text-xs rounded-xl border border-slate-200/60 flex items-center gap-2 transition cursor-pointer shadow-sm active:scale-95"
+                  >
+                    <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Batch: {selectedBatch}</span>
+                    <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${isBatchOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  
+                  {isBatchOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setIsBatchOpen(false)} />
+                      <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 p-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
+                        {['2024 - 2028', '2023 - 2027', '2022 - 2026', '2025 - 2029'].map((batchOption) => (
+                          <button
+                            key={batchOption}
+                            onClick={() => {
+                              setSelectedBatch(batchOption);
+                              setIsBatchOpen(false);
+                            }}
+                            className={`w-full text-left px-3.5 py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
+                              selectedBatch === batchOption
+                                ? 'bg-blue-50 text-blue-600'
+                                : 'text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            Batch {batchOption}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* SECTION SELECTOR (POPPING DROPDOWN) */}
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setIsSectionOpen(!isSectionOpen);
+                      setIsBatchOpen(false);
+                    }}
+                    className="px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-800 font-extrabold text-xs rounded-xl border border-slate-200/60 flex items-center gap-2 transition cursor-pointer shadow-sm active:scale-95"
+                  >
+                    <Users className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Section: {selectedSection}</span>
+                    <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${isSectionOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isSectionOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setIsSectionOpen(false)} />
+                      <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 p-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
+                        {availableSections.map((sect) => (
+                          <button
+                            key={sect}
+                            onClick={() => {
+                              setSelectedSection(sect);
+                              setIsSectionOpen(false);
+                            }}
+                            className={`w-full text-left px-3.5 py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
+                              selectedSection === sect
+                                ? 'bg-indigo-50 text-indigo-600'
+                                : 'text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            Section {sect}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <button
+                  onClick={handleExportObservationExcel}
+                  className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-md shadow-emerald-600/10 active:scale-95"
+                  title="Download Observation Records as Excel (.xlsx) Spreadsheet"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download Observation Records (.xlsx)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Notebook Type Switcher for Matrix view toggling */}
+            <div className="flex items-center gap-3 border-t border-slate-50 pt-4">
+              <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Active Notebook View:</span>
+              <div className="inline-flex p-1 bg-slate-50 rounded-xl border border-slate-100">
+                <button
+                  onClick={() => setNotebookMode('observation')}
+                  className={`px-4 py-2 text-xs font-black rounded-lg transition-all cursor-pointer ${
+                    notebookMode === 'observation'
+                      ? 'bg-white text-blue-600 shadow-sm border border-slate-200/40'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Observation Notebooks
+                </button>
+                <button
+                  onClick={() => setNotebookMode('record')}
+                  className={`px-4 py-2 text-xs font-black rounded-lg transition-all cursor-pointer ${
+                    notebookMode === 'record'
+                      ? 'bg-white text-blue-600 shadow-sm border border-slate-200/40'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Record Notebooks
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* MAIN GRID SHEET */}
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse border-spacing-0">
+                <thead>
+                  {/* Row 1 headings: Week labels */}
+                  <tr className="bg-slate-50 text-[10px] font-extrabold uppercase text-slate-400 tracking-widest border-b border-slate-100">
+                    <th rowSpan={2} className="px-4 py-4 text-center border-r border-slate-100">S.No</th>
+                    <th rowSpan={2} className="px-4 py-4 border-r border-slate-100 min-w-[90px]">Roll No</th>
+                    <th rowSpan={2} className="px-4 py-4 border-r border-slate-100 min-w-[140px]">Student Name</th>
+                    <th rowSpan={2} className="px-4 py-4 border-r border-slate-100 min-w-[110px]">Register No</th>
+                    {[1, 2, 3, 4, 5, 6].map((week) => (
+                      <th 
+                        key={week} 
+                        colSpan={2} 
+                        className="px-4 py-3 text-center border-r border-slate-100 bg-blue-50/10 font-black text-blue-900"
+                      >
+                        Week {week}
+                      </th>
+                    ))}
+                  </tr>
+                  {/* Row 2 headings: Experiment labels */}
+                  <tr className="bg-slate-50 text-[9px] font-black uppercase text-slate-500 tracking-wide border-b border-slate-200">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((expIdx) => (
+                      <th 
+                        key={expIdx} 
+                        className="px-2 py-3 text-center border-r border-slate-100 min-w-[70px] hover:bg-slate-100/50 transition cursor-help"
+                        title={LAB_EXERCISES[expIdx - 1]?.name}
+                      >
+                        Exp {expIdx}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {sectionStudents.map((st, idx) => (
+                    <tr key={st.id} className="hover:bg-slate-50/30 transition-colors">
+                      <td className="px-4 py-4 text-center font-bold text-slate-400 border-r border-slate-100 bg-slate-50/20">{idx + 1}</td>
+                      <td className="px-4 py-4 font-mono font-bold text-slate-700 border-r border-slate-100">{st.rollNo}</td>
+                      <td className="px-4 py-4 font-extrabold text-slate-800 border-r border-slate-100">{st.name}</td>
+                      <td className="px-4 py-4 font-semibold text-slate-500 border-r border-slate-100">{st.registerNo}</td>
+                                         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((expIdx) => {
+                        const cellState = signoffState[st.id]?.[expIdx] || { observation: 'none', record: 'tick' };
+                        const status = notebookMode === 'observation' ? cellState.observation : cellState.record;
+                        const hasObsMark = cellState.observationMarks !== undefined && cellState.observationMarks !== '' && cellState.observationMarks !== null;
+
+                        return (
+                          <td 
+                            key={expIdx} 
+                            onClick={() => {
+                              if (notebookMode === 'record') {
+                                handleToggleSignoff(st.id, expIdx, 'record');
+                              }
+                            }}
+                            className={`px-2 py-3.5 text-center border-r border-slate-100 transition-all duration-200 select-none ${
+                              notebookMode === 'record'
+                                ? 'cursor-pointer ' + (status === 'tick'
+                                  ? 'bg-emerald-50/40 hover:bg-emerald-100/60' 
+                                  : status === 'cross'
+                                  ? 'bg-rose-50/40 hover:bg-rose-100/60'
+                                  : 'bg-slate-50/10 hover:bg-slate-100/40')
+                                : (hasObsMark || cellState.observation === 'tick'
+                                  ? 'bg-emerald-50/50 hover:bg-emerald-100/60'
+                                  : '')
+                            }`}
+                          >
+                            <div className="flex items-center justify-center">
+                               {notebookMode === 'observation' ? (
+                                <div className="flex flex-col items-center gap-1 group/obs">
+                                  <input
+                                    type="text"
+                                    value={cellState.observationMarks !== undefined ? cellState.observationMarks : ''}
+                                    onChange={(e) => handleLocalMarksChange(st.id, expIdx, e.target.value)}
+                                    onBlur={(e) => handleSaveMarks(st.id, expIdx, e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        handleSaveMarks(st.id, expIdx, (e.target as HTMLInputElement).value);
+                                        (e.target as HTMLInputElement).blur();
+                                      }
+                                    }}
+                                    className={`w-14 text-center rounded-lg py-1 font-extrabold text-xs transition-all shadow-xs focus:outline-none focus:ring-2 ${
+                                      cellState.observationMarks === 'A'
+                                        ? 'bg-rose-600 text-white border-2 border-rose-700 font-black shadow-sm'
+                                        : cellState.observationMarks === 'OD'
+                                        ? 'bg-amber-500 text-white border-2 border-amber-600 font-black shadow-sm'
+                                        : cellState.observationMarks === 'X' || cellState.observation === 'cross'
+                                        ? 'bg-rose-100 text-rose-700 border-2 border-rose-400 font-black'
+                                        : (hasObsMark || cellState.observation === 'tick'
+                                          ? 'bg-emerald-600 text-white border-2 border-emerald-700 font-black shadow-sm'
+                                          : 'bg-white text-slate-800 border border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 font-bold')
+                                    }`}
+                                    placeholder="Mark/A"
+                                  />
+                                  <div className="flex items-center gap-0.5 opacity-70 group-hover/obs:opacity-100 transition-opacity">
+                                    <button
+                                      type="button"
+                                      title="Set 10 Marks"
+                                      onClick={(e) => { e.stopPropagation(); handleSaveMarks(st.id, expIdx, '10'); }}
+                                      className="px-1 py-0.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded text-[9px] font-black cursor-pointer"
+                                    >
+                                      10
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Set Wrong (X)"
+                                      onClick={(e) => { e.stopPropagation(); handleSaveMarks(st.id, expIdx, 'X'); }}
+                                      className="px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded text-[9px] font-black cursor-pointer"
+                                    >
+                                      X
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Set Absent (A)"
+                                      onClick={(e) => { e.stopPropagation(); handleSaveMarks(st.id, expIdx, 'A'); }}
+                                      className="px-1 py-0.5 bg-red-100 hover:bg-red-200 text-red-800 rounded text-[9px] font-black cursor-pointer"
+                                    >
+                                      A
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Set On Duty (OD)"
+                                      onClick={(e) => { e.stopPropagation(); handleSaveMarks(st.id, expIdx, 'OD'); }}
+                                      className="px-1 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded text-[9px] font-black cursor-pointer"
+                                    >
+                                      OD
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="cursor-pointer">
+                                  {status === 'tick' ? (
+                                    <div className="p-1.5 rounded-full bg-emerald-100 text-emerald-700 shadow-inner animate-in zoom-in-75 duration-100 inline-flex items-center justify-center">
+                                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                    </div>
+                                  ) : status === 'cross' ? (
+                                    <div className="p-1.5 rounded-full bg-rose-100 text-rose-600 shadow-inner animate-in zoom-in-75 duration-100 inline-flex items-center justify-center">
+                                      <X className="w-3.5 h-3.5 stroke-[3]" />
+                                    </div>
+                                  ) : (
+                                    <div className="w-4.5 h-4.5 rounded-full border-2 border-slate-300 bg-white transition-colors hover:border-slate-400 inline-block" />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =======================================================
+          PAGE 4: DATA VISUALIZATION HISTOGRAMS & PROFILE INFO
+          ======================================================= */}
+      {activePage === 4 && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            {/* HISTOGRAM 1: SIGN-OFF COMPLETION RATE */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+              <div>
+                <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">
+                  Notebook Completion Histograms
+                </h4>
+                <p className="text-xs text-slate-400">
+                  Total student counts grouped by signed experiment volumes (Observation vs Record).
+                </p>
+              </div>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={signoffHistogramData}
+                    margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis dataKey="name" stroke="#64748b" fontSize={11} fontWeight="bold" />
+                    <YAxis stroke="#64748b" fontSize={11} fontWeight="bold" />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }} />
+                    <Legend wrapperStyle={{ fontSize: '11px', fontWeight: 'bold' }} />
+                    <Bar dataKey="Observations" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Records" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* HISTOGRAM 2: ATTENDANCE BRACKET */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+              <div>
+                <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">
+                  Attendance Bracket Ranges
+                </h4>
+                <p className="text-xs text-slate-400">
+                  Distribution of students across high, medium, and low overall attendance brackets.
+                </p>
+              </div>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={attendanceHistogramData}
+                    margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis dataKey="range" stroke="#64748b" fontSize={11} fontWeight="bold" />
+                    <YAxis stroke="#64748b" fontSize={11} fontWeight="bold" />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }} />
+                    <Bar dataKey="Students" radius={[4, 4, 0, 0]}>
+                      {attendanceHistogramData.map((entry, index) => (
+                        <Bar key={`bar-${index}`} dataKey="Students" fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =======================================================
+          PAGE 5: DEDICATED INSTITUTIONAL FACULTY PROFILE VIEW
+          ======================================================= */}
+      {activePage === 5 && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-white rounded-3xl border border-slate-100 p-8 md:p-10 shadow-sm space-y-8">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-8 pb-8 border-b border-slate-100">
+              <div className="flex flex-col md:flex-row items-center gap-8">
+                <div className="relative group shrink-0">
+                  <div className="w-24 h-24 rounded-full bg-[#0B192C] text-white flex items-center justify-center text-4xl font-black shadow-md border-4 border-slate-50 uppercase overflow-hidden">
+                    {user.profilePic ? (
+                      <img src={user.profilePic} alt={user.name} className="w-full h-full object-cover" />
+                    ) : (
+                      facultyData.name.charAt(0) || "F"
+                    )}
+                  </div>
+                  <label className="absolute inset-0 bg-black/60 text-white text-[9px] font-extrabold rounded-full flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer text-center p-1">
+                    <span>UPLOAD</span>
+                    <span>PIC (MAX 10MB)</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 10 * 1024 * 1024) {
+                          alert("Profile picture must be within 10MB!");
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onloadend = async () => {
+                          const base64 = reader.result as string;
+                          if (updateProfilePic) {
+                            await updateProfilePic(base64);
+                          }
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                  </label>
+                </div>
+                <div className="text-center md:text-left space-y-2">
+                  <span className="inline-flex px-3 py-1 bg-blue-50 text-blue-700 text-[10px] font-black rounded-full border border-blue-100 uppercase tracking-widest">
+                    Verified Institutional Member
+                  </span>
+                  <h3 className="text-2xl font-black text-slate-900 tracking-tight">{facultyData.name}</h3>
+                  <p className="text-indigo-600 font-extrabold text-sm uppercase tracking-wider">
+                    {facultyData.department}
+                  </p>
+                </div>
+              </div>
+              
+              <button
+                onClick={() => {
+                  setEditForm({
+                    name: facultyData.name || '',
+                    phone: facultyData.phone || '',
+                    subjectName: subjectName || '',
+                    subjectCode: subjectCode || '',
+                    labName: facultyData.labName || '',
+                    batch: facultyData.batch || '',
+                  });
+                  setShowEditProfileModal(true);
+                }}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer transition shadow-md active:scale-95 animate-fade-in"
+              >
+                <Edit3 className="w-4 h-4" />
+                <span>Modify Profile Details</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-xs">
+              <div className="space-y-4">
+                <h4 className="font-extrabold text-slate-400 text-[10px] uppercase tracking-widest border-b border-slate-50 pb-2">
+                  Academic Designation Profile
+                </h4>
+                <div className="space-y-3">
+                  <div className="flex justify-between py-2 border-b border-slate-50">
+                    <span className="text-slate-500 font-bold">Handling Subject Name</span>
+                    <span className="text-slate-850 font-black">{subjectName}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-slate-50">
+                    <span className="text-slate-500 font-bold">Subject Code</span>
+                    <span className="text-slate-850 font-mono font-black text-blue-600">{subjectCode}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-slate-50">
+                    <span className="text-slate-500 font-bold">Assigned Laboratory Room</span>
+                    <span className="text-slate-850 font-black">{facultyData.labName}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="font-extrabold text-slate-400 text-[10px] uppercase tracking-widest border-b border-slate-50 pb-2">
+                  Institutional Contact Profile
+                </h4>
+                <div className="space-y-3">
+                  <div className="flex justify-between py-2 border-b border-slate-50">
+                    <span className="text-slate-500 font-bold">Official Mail ID</span>
+                    <span className="text-slate-850 font-black text-blue-600">{facultyData.email}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-slate-50">
+                    <span className="text-slate-500 font-bold">Authorized Phone Number</span>
+                    <span className="text-slate-850 font-black">{phoneNo}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-slate-50">
+                    <span className="text-slate-500 font-bold">Handling Batch Sections</span>
+                    <span className="text-slate-850 font-black">{facultyData.batch || 'AI & DS-A1, AI & DS-A2'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FACULTY PROFILE MODAL */}
+      {showProfileModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-lg w-full overflow-hidden transform scale-100 transition-all">
+            <div className="bg-gradient-to-r from-blue-950 to-[#0B192C] text-white p-6 relative">
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowProfileModal(false);
+                }}
+                className="absolute right-4 top-4 text-slate-300 hover:text-white p-1.5 hover:bg-slate-800/50 rounded-xl transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="flex items-center gap-4 mt-2">
+                <div className="relative group shrink-0">
+                  <div className="w-16 h-16 rounded-full bg-blue-600 border-2 border-blue-400 flex items-center justify-center text-2xl font-black shadow-inner uppercase overflow-hidden text-white">
+                    {user.profilePic ? (
+                      <img src={user.profilePic} alt={user.name} className="w-full h-full object-cover" />
+                    ) : (
+                      facultyData.name.charAt(0) || "F"
+                    )}
+                  </div>
+                  <label className="absolute inset-0 bg-black/60 text-white text-[8px] font-black rounded-full flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer text-center p-0.5">
+                    <span>UPLOAD</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 10 * 1024 * 1024) {
+                          alert("Profile picture must be within 10MB!");
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onloadend = async () => {
+                          const base64 = reader.result as string;
+                          if (updateProfilePic) {
+                            await updateProfilePic(base64);
+                          }
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                  </label>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold tracking-tight">{facultyData.name}</h3>
+                  <p className="text-xs text-blue-300 font-semibold">{facultyData.department}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-6 space-y-4 text-xs">
+              <h4 className="font-extrabold text-slate-400 uppercase tracking-widest text-[10px]">Official Faculty Credentials</h4>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                  <span className="text-slate-400 font-bold block mb-1">FACULTY NAME</span>
+                  <span className="text-slate-800 font-black text-sm">{facultyData.name}</span>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                  <span className="text-slate-400 font-bold block mb-1">OFFICIAL MAIL ID</span>
+                  <span className="text-slate-800 font-extrabold break-all">{facultyData.email}</span>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                  <span className="text-slate-400 font-bold block mb-1">PHONE NUMBER</span>
+                  <span className="text-slate-800 font-bold">{phoneNo}</span>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                  <span className="text-slate-400 font-bold block mb-1">LAB ROOM NAME</span>
+                  <span className="text-slate-800 font-bold">{facultyData.labName}</span>
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-slate-50">
+                <div className="flex justify-between py-2 border-b border-slate-50">
+                  <span className="text-slate-500 font-medium">Handling Subject</span>
+                  <span className="text-slate-800 font-extrabold">{subjectName}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-slate-50">
+                  <span className="text-slate-500 font-medium">Subject Code</span>
+                  <span className="text-slate-800 font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">{subjectCode}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-slate-50">
+                  <span className="text-slate-500 font-medium">Handling Sections</span>
+                  <span className="text-slate-850 font-bold">{facultyData.batch || 'AI & DS-A1, AI & DS-A2'}</span>
+                </div>
+              </div>
+
+              <div className="pt-4">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowProfileModal(false);
+                  }}
+                  className="w-full py-3 bg-[#0B192C] hover:bg-slate-800 text-white rounded-2xl font-bold transition cursor-pointer"
+                >
+                  Close Profile View
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditProfileModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in text-slate-800">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-lg w-full overflow-hidden transform scale-100 transition-all p-6 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-blue-600" />
+                <span>Modify Faculty Profile Details</span>
+              </h3>
+              <button onClick={() => setShowEditProfileModal(false)} className="text-slate-400 hover:text-slate-600 transition cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateProfile} className="space-y-4 text-xs font-semibold">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold uppercase text-slate-400">Full Name</label>
+                <input 
+                  type="text" 
+                  value={editForm.name} 
+                  onChange={e => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl"
+                  required
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold uppercase text-slate-400">Handling Subject Name</label>
+                <input 
+                  type="text" 
+                  value={editForm.subjectName} 
+                  onChange={e => setEditForm(prev => ({ ...prev, subjectName: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl"
+                  required
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold uppercase text-slate-400">Subject Code</label>
+                <input 
+                  type="text" 
+                  value={editForm.subjectCode} 
+                  onChange={e => setEditForm(prev => ({ ...prev, subjectCode: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold uppercase text-slate-400">Assigned Laboratory Room</label>
+                <input 
+                  type="text" 
+                  value={editForm.labName} 
+                  onChange={e => setEditForm(prev => ({ ...prev, labName: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl"
+                  required
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold uppercase text-slate-400">Authorized Phone Number</label>
+                <input 
+                  type="text" 
+                  value={editForm.phone} 
+                  onChange={e => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold uppercase text-slate-400">Handling Batches / Sections</label>
+                <input 
+                  type="text" 
+                  value={editForm.batch} 
+                  onChange={e => setEditForm(prev => ({ ...prev, batch: e.target.value }))}
+                  placeholder="e.g. AI & DS-A1, AI & DS-A2, AI & DS-B1"
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                <button 
+                  type="button" 
+                  onClick={() => setShowEditProfileModal(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold cursor-pointer"
+                >
+                  Save Profile Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

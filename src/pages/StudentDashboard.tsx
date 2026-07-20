@@ -74,7 +74,7 @@ export default function StudentDashboard() {
   const [certTitle, setCertTitle] = useState('');
   const [certIssuer, setCertIssuer] = useState('');
   const [certType, setCertType] = useState<'workshop' | 'symposium' | 'completion' | 'event'>('workshop');
-  const [certDate, setCertDate] = useState('2026-07-08');
+  const [certDate, setCertDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [certificates, setCertificates] = useState(student?.certificates || []);
 
   if (!student) {

@@ -22,6 +22,7 @@ const FacultySchema = new Schema(
     labName: { type: String, required: true },
     batch: { type: String, required: true },
     subjectsHandled: [{ type: String }],
+    subjectName: { type: String, default: "" },
     subjectCode: { type: String, default: "" },
     experience: { type: String, default: "0 Years" },
     workloadHours: { type: Number, default: 0 },
@@ -31,6 +32,8 @@ const FacultySchema = new Schema(
     phone: { type: String, default: "" },
     isActive: { type: Boolean, default: false },
     facultyAttendance: { type: Number, default: 100 },
+    batchId: { type: String, default: "" },
+    sectionId: { type: String, default: "" },
   },
   {
     timestamps: true,

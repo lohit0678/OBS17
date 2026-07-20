@@ -4,24 +4,23 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { AcademicDataProvider } from './context/AcademicDataContext';
 import LayoutWrapper from './components/LayoutWrapper';
 
-// Page Imports
 import Login from './pages/Login';
-import HodDashboard from './pages/HodDashboard';
-import HodFaculty from './pages/HodFaculty';
-import HodStudents from './pages/HodStudents';
+import AdminFaculty from './pages/AdminFaculty';
+import AdminStudents from './pages/AdminStudents';
 import FacultyDashboard from './pages/FacultyDashboard';
 import FacultyStudents from './pages/FacultyStudents';
 import FacultyAttendance from './pages/FacultyAttendance';
 import FacultyTimetable from './pages/FacultyTimetable';
 import StudentDashboard from './pages/StudentDashboard';
 import StudentDetail from './pages/StudentDetail';
+import AdminDashboard from './pages/AdminDashboard';
 
 // ==========================================
 // 1. ROUTE GUARD: Authentication & Role Check
 // ==========================================
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  allowedRoles?: ('HOD' | 'Faculty' | 'Student')[];
+  allowedRoles?: ('Admin' | 'HOD' | 'Faculty' | 'Student')[];
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles }) => {
@@ -53,46 +52,46 @@ export default function App() {
             {/* Gateways */}
             <Route path="/login" element={<Login />} />
 
-            {/* A. HOD PRIVILEGE ROUTES */}
-            {/* Legacy redirect */}
-            <Route path="/hod/dashboard" element={<Navigate to="/hod/overview" replace />} />
+            {/* ADMIN ROUTES */}
+            <Route path="/admin/dashboard" element={<Navigate to="/admin/overview" replace />} />
             <Route
-              path="/hod/faculty"
+              path="/admin/:tab"
               element={
-                <ProtectedRoute allowedRoles={['HOD']}>
-                  <HodFaculty />
+                <ProtectedRoute allowedRoles={['Admin']}>
+                  <AdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/admin/faculty"
+              element={
+                <ProtectedRoute allowedRoles={['Admin']}>
+                  <AdminFaculty />
                 </ProtectedRoute>
               }
             />
             <Route
-              path="/hod/faculty/:facultyId"
+              path="/admin/faculty/:facultyId"
               element={
-                <ProtectedRoute allowedRoles={['HOD']}>
-                  <HodFaculty />
+                <ProtectedRoute allowedRoles={['Admin']}>
+                  <AdminFaculty />
                 </ProtectedRoute>
               }
             />
             <Route
-              path="/hod/students"
+              path="/admin/students"
               element={
-                <ProtectedRoute allowedRoles={['HOD']}>
-                  <HodStudents />
+                <ProtectedRoute allowedRoles={['Admin']}>
+                  <AdminStudents />
                 </ProtectedRoute>
               }
             />
             <Route
-              path="/hod/students/:studentId"
+              path="/admin/students/:studentId"
               element={
-                <ProtectedRoute allowedRoles={['HOD']}>
+                <ProtectedRoute allowedRoles={['Admin']}>
                   <StudentDetail />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/hod/:tab"
-              element={
-                <ProtectedRoute allowedRoles={['HOD']}>
-                  <HodDashboard />
                 </ProtectedRoute>
               }
             />

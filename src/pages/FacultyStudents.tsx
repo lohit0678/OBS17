@@ -120,7 +120,7 @@ export default function FacultyStudents() {
   const { students, getFacultyStudents, updateLabSubmissionStatus, gradeAssignment, updateStudentRisk } = useAcademicData();
   const navigate = useNavigate();
 
-  const myStudents = getFacultyStudents(user.id);
+  const myStudents = getFacultyStudents(user.email || user.id);
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
 
   // Active student selection for in-page review console
@@ -160,14 +160,23 @@ export default function FacultyStudents() {
       setRiskFlagged(selectedStudent.riskFlagged);
       setRiskReason(selectedStudent.riskReason || '');
       
+      const facId = (user.id || "").toLowerCase();
+      const facEmail = (user.email || "").toLowerCase();
+
       // Auto-populate score and remarks for selected experiment index
       if (reviewType === 'observation') {
-        const exp = selectedStudent.experiments.find(e => e.id === `exp-${reviewExpIdx}`);
+        const exp = selectedStudent.experiments?.find((e: any) => {
+          const facultyMatch = (e.signedOffBy && (e.signedOffBy.toLowerCase() === facId || e.signedOffBy.toLowerCase() === facEmail)) || e.facultyId === facId;
+          return (facultyMatch || !e.signedOffBy) && (e.experimentNumber === reviewExpIdx || e.id?.endsWith(`-${reviewExpIdx}`));
+        });
         setReviewScore(exp?.score || 10);
         setReviewRemarks(exp?.remarks || 'Observation notebook checked and approved.');
         setReviewStatus((exp?.status === 'Approved' || exp?.status === 'Rejected') ? exp.status : 'Approved');
       } else {
-        const asg = selectedStudent.assignments.find(a => a.id === `asg-${reviewExpIdx}`);
+        const asg = selectedStudent.assignments?.find((a: any) => {
+          const facultyMatch = (a.gradedBy && (a.gradedBy.toLowerCase() === facId || a.gradedBy.toLowerCase() === facEmail)) || a.facultyId === facId;
+          return (facultyMatch || !a.gradedBy) && (a.experimentNumber === reviewExpIdx || a.id?.endsWith(`-${reviewExpIdx}`));
+        });
         setReviewScore(asg?.score || 10);
         setReviewRemarks(asg?.remarks || 'Record notebook checked, diagrams verified.');
         setReviewStatus(asg?.status === 'Graded' ? 'Approved' : 'Approved');
