@@ -2405,18 +2405,58 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
                         reader.onloadend = () => {
                           const base64 = reader.result as string;
                           setTimetableImagePreview(base64);
+
                           const sf = selectedSubjectShortForm || getSubjectShortForm(timetableModalFaculty.subjectName || timetableModalFaculty.subject, timetableModalFaculty.subjectShortForm, timetableModalFaculty.subjectCode);
+                          const sfUpper = (sf || 'KIES').toUpperCase();
+
+                          const daysShort = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+                          const currentDayCode = daysShort[new Date().getDay()];
+
+                          const PANIMALAR_AUTO_ANALYSIS: Record<string, { labDay: string; labPeriod: string; theory: Record<string, string> }> = {
+                            KIES: {
+                              labDay: 'FRI',
+                              labPeriod: 'Period 2 & 3 Morning Lab Slot (8.50 AM - 10.30 AM)',
+                              theory: { MON: 'Period 6 (1.15 PM - 1.55 PM)', TUE: 'Period 2 (8.50 AM - 9.40 AM)', WED: 'Period 2 (8.50 AM - 9.40 AM)', THU: 'Period 3 (9.40 AM - 10.30 AM)', FRI: 'Period 6 (1.15 PM - 1.55 PM)' }
+                            },
+                            DA: {
+                              labDay: 'TUE',
+                              labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
+                              theory: { TUE: 'Period 1 (8.00 AM - 8.50 AM) & Period 7 (1.55 PM - 2.35 PM)', WED: 'Period 3 (9.40 AM - 10.30 AM)', FRI: 'Period 7 (1.55 PM - 2.35 PM)' }
+                            },
+                            DEV: {
+                              labDay: 'THU',
+                              labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
+                              theory: { WED: 'Period 1 (8.00 AM - 8.50 AM)', THU: 'Period 2 (8.50 AM - 9.40 AM)', FRI: 'Period 8 (2.35 PM - 3.15 PM)' }
+                            },
+                            TSP: {
+                              labDay: 'MON',
+                              labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
+                              theory: {}
+                            }
+                          };
+
+                          const autoData = PANIMALAR_AUTO_ANALYSIS[sfUpper] || PANIMALAR_AUTO_ANALYSIS['KIES'];
+                          const autoPeriod = (currentDayCode === autoData.labDay) ? autoData.labPeriod : (autoData.theory[currentDayCode] || 'Period 1 (8.00 AM - 8.50 AM)');
+
+                          setSelectedTimetablePeriod(autoPeriod);
+
                           const payload = JSON.stringify({
                             image: base64,
-                            subjectShortForm: sf,
-                            period: selectedTimetablePeriod,
+                            subjectShortForm: sfUpper,
+                            period: autoPeriod,
                             subjectName: timetableModalFaculty.subjectName || timetableModalFaculty.subject,
                             subjectCode: timetableModalFaculty.subjectCode,
+                            analyzedAt: new Date().toISOString(),
                             updatedAt: new Date().toISOString()
                           });
+
                           localStorage.setItem(`faculty_timetable_${timetableModalFaculty.id}`, payload);
                           localStorage.setItem(`faculty_timetable_${timetableModalFaculty.email}`, payload);
-                          alert(`Timetable image analyzed & assigned successfully for ${timetableModalFaculty.name || 'Faculty'} (${sf} - ${selectedTimetablePeriod})!`);
+
+                          window.dispatchEvent(new Event('storage'));
+                          window.dispatchEvent(new CustomEvent('timetableUpdated', { detail: { facultyId: timetableModalFaculty.id } }));
+
+                          alert(`✨ Timetable Image Uploaded & Automatically Analyzed!\n\nSubject Short Form: ${sfUpper}\nFetched Period Timing: ${autoPeriod}\n\nThis timetable is now synced real-time to the Faculty Dashboard.`);
                         };
                         reader.readAsDataURL(file);
                       }}

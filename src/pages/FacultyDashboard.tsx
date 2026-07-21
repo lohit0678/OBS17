@@ -246,6 +246,21 @@ export default function FacultyDashboard() {
     setSignoffState({});
   }
 
+  const [timetableRefreshKey, setTimetableRefreshKey] = useState(0);
+
+  // Real-time listener for live timetable updates when uploaded in Admin Dashboard
+  useEffect(() => {
+    const handleLiveSync = () => {
+      setTimetableRefreshKey((prev) => prev + 1);
+    };
+    window.addEventListener('storage', handleLiveSync);
+    window.addEventListener('timetableUpdated', handleLiveSync);
+    return () => {
+      window.removeEventListener('storage', handleLiveSync);
+      window.removeEventListener('timetableUpdated', handleLiveSync);
+    };
+  }, []);
+
   // Resolve Subject Short Form matching Admin Batch Creation
   const resolveFacultyShortForm = (fSubName: string, fSubCode: string, fId: string, fEmail: string): string => {
     // 1. Check custom saved timetable for faculty
