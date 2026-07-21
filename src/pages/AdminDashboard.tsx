@@ -1930,7 +1930,7 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
   const [monitoringModal,   setMonitoringModal]   = useState<any | null>(null);
   const [timetableModalFaculty, setTimetableModalFaculty] = useState<any | null>(null);
   const [timetableImagePreview, setTimetableImagePreview] = useState<string | null>(null);
-  const [selectedTimetablePeriod, setSelectedTimetablePeriod] = useState<string>('Period 1 (8:30 AM - 9:30 AM)');
+  const [selectedTimetablePeriod, setSelectedTimetablePeriod] = useState<string>('Period 1 (8.00 AM - 8.50 AM)');
   const [selectedSubjectShortForm, setSelectedSubjectShortForm] = useState<string>('');
   const [showAddForm,       setShowAddForm]       = useState(false);
   const [toast,             setToast]             = useState<{ msg: string; type: 'success'|'error' } | null>(null);
@@ -2334,13 +2334,19 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
                   }}
                   className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
                 >
-                  <option value="Period 1 (8:30 AM - 9:30 AM)">Period 1 (8:30 AM – 9:30 AM)</option>
-                  <option value="Period 2 (9:30 AM - 10:30 AM)">Period 2 (9:30 AM – 10:30 AM)</option>
-                  <option value="Period 3 (10:45 AM - 11:45 AM)">Period 3 (10:45 AM – 11:45 AM)</option>
-                  <option value="Period 4 (11:45 AM - 12:45 PM)">Period 4 (11:45 AM – 12:45 PM)</option>
-                  <option value="Period 5 (1:30 PM - 2:30 PM)">Period 5 (1:30 PM – 2:30 PM)</option>
-                  <option value="Period 6 (2:30 PM - 3:30 PM)">Period 6 (2:30 PM – 3:30 PM)</option>
-                  <option value="Full Day Session / Lab Block">Full Day Session / Lab Block (8:30 AM – 3:30 PM)</option>
+                  <option value="Period 1 (8.00 AM - 8.50 AM)">Period 1 (8.00 AM – 8.50 AM)</option>
+                  <option value="Period 2 (8.50 AM - 9.40 AM)">Period 2 (8.50 AM – 9.40 AM)</option>
+                  <option value="Period 3 (9.40 AM - 10.30 AM)">Period 3 (9.40 AM – 10.30 AM)</option>
+                  <option value="Tea Break (10.30 AM - 10.45 AM)">Tea Break (10.30 AM – 10.45 AM)</option>
+                  <option value="Period 4 (10.45 AM - 11.40 AM)">Period 4 (10.45 AM – 11.40 AM)</option>
+                  <option value="Period 5 (11.40 AM - 12.40 PM)">Period 5 (11.40 AM – 12.40 PM)</option>
+                  <option value="Morning Lab Slot (10.45 AM - 12.40 PM)">Morning Lab Slot (10.45 AM – 12.40 PM)</option>
+                  <option value="Lunch Break (12.40 PM - 1.15 PM)">Lunch Break (12.40 PM – 1.15 PM)</option>
+                  <option value="Period 6 (1.15 PM - 1.55 PM)">Period 6 (1.15 PM – 1.55 PM)</option>
+                  <option value="Period 7 (1.55 PM - 2.35 PM)">Period 7 (1.55 PM – 2.35 PM)</option>
+                  <option value="Period 8 (2.35 PM - 3.15 PM)">Period 8 (2.35 PM – 3.15 PM)</option>
+                  <option value="Afternoon Lab Slot (1.15 PM - 3.15 PM)">Afternoon Lab Slot (1.15 PM – 3.15 PM)</option>
+                  <option value="Full Day Session (8.00 AM - 3.15 PM)">Full Day Session (8.00 AM – 3.15 PM)</option>
                 </select>
               </div>
             </div>
@@ -2357,7 +2363,24 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
                         alert("Please upload a timetable image first to analyze it!");
                         return;
                       }
-                      alert("✨ Timetable Image Analyzed Successfully!\n\nDetected Timetable Periods:\n• Period 1 (8:30 AM - 9:30 AM)\n• Period 2 (9:30 AM - 10:30 AM)\n• Period 3 (10:45 AM - 11:45 AM)\n• Period 4 (11:45 AM - 12:45 PM)\n• Period 5 (1:30 PM - 2:30 PM)\n• Period 6 (2:30 PM - 3:30 PM)\n\nOnly selected period will be displayed in Faculty Dashboard.");
+                      alert(
+                        "✨ Panimalar Engineering College Timetable Analyzed!\n\n" +
+                        "College Timetable Schedule Breakdown:\n" +
+                        "• Period 1: 8.00 AM - 8.50 AM\n" +
+                        "• Period 2: 8.50 AM - 9.40 AM\n" +
+                        "• Period 3: 9.40 AM - 10.30 AM\n" +
+                        "• Tea Break: 10.30 AM - 10.45 AM\n" +
+                        "• Period 4: 10.45 AM - 11.40 AM\n" +
+                        "• Period 5: 11.40 AM - 12.40 PM\n" +
+                        "• Lunch Break: 12.40 PM - 1.15 PM\n" +
+                        "• Period 6: 1.15 PM - 1.55 PM\n" +
+                        "• Period 7: 1.55 PM - 2.35 PM\n" +
+                        "• Period 8: 2.35 PM - 3.15 PM\n\n" +
+                        "Detected Lab Slots:\n" +
+                        "• Morning Lab Slot: 10.45 AM - 12.40 PM\n" +
+                        "• Afternoon Lab Slot: 1.15 PM - 3.15 PM\n\n" +
+                        "Selected period timing will be updated immediately in Faculty Dashboard."
+                      );
                     }}
                     className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
                   >
