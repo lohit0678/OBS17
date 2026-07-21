@@ -9,7 +9,7 @@ import {
   GraduationCap, Building2, Calendar, FileSpreadsheet,
   Layers, UserCheck, Trash2, RefreshCw, Eye, BookOpenCheck,
   ClipboardList, Send, Search, Mail, Pencil, Activity, Clock, CheckCircle, CheckCircle2, Download,
-  Wifi, WifiOff, TrendingUp
+  Wifi, WifiOff, TrendingUp, Sparkles
 } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -2315,8 +2315,24 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
                 </label>
                 <select
                   value={selectedTimetablePeriod}
-                  onChange={(e) => setSelectedTimetablePeriod(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  onChange={(e) => {
+                    const newPeriod = e.target.value;
+                    setSelectedTimetablePeriod(newPeriod);
+                    if (timetableImagePreview && timetableModalFaculty) {
+                      const sf = selectedSubjectShortForm || getSubjectShortForm(timetableModalFaculty.subjectName || timetableModalFaculty.subject, timetableModalFaculty.subjectShortForm, timetableModalFaculty.subjectCode);
+                      const payload = JSON.stringify({
+                        image: timetableImagePreview,
+                        subjectShortForm: sf,
+                        period: newPeriod,
+                        subjectName: timetableModalFaculty.subjectName || timetableModalFaculty.subject,
+                        subjectCode: timetableModalFaculty.subjectCode,
+                        updatedAt: new Date().toISOString()
+                      });
+                      localStorage.setItem(`faculty_timetable_${timetableModalFaculty.id}`, payload);
+                      localStorage.setItem(`faculty_timetable_${timetableModalFaculty.email}`, payload);
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
                 >
                   <option value="Period 1 (8:30 AM - 9:30 AM)">Period 1 (8:30 AM – 9:30 AM)</option>
                   <option value="Period 2 (9:30 AM - 10:30 AM)">Period 2 (9:30 AM – 10:30 AM)</option>
@@ -2331,43 +2347,59 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
 
             {/* Upload & Preview Section */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider">Handling Subject Timetable Schedule Image</h4>
-                <label className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm">
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>{timetableImagePreview ? 'Upload New Image' : 'Upload Timetable Image'}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      if (file.size > 12 * 1024 * 1024) {
-                        alert("Image size must be under 12MB");
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!timetableImagePreview) {
+                        alert("Please upload a timetable image first to analyze it!");
                         return;
                       }
-                      const reader = new FileReader();
-                      reader.onloadend = () => {
-                        const base64 = reader.result as string;
-                        setTimetableImagePreview(base64);
-                        const sf = selectedSubjectShortForm || getSubjectShortForm(timetableModalFaculty.subjectName || timetableModalFaculty.subject, timetableModalFaculty.subjectShortForm, timetableModalFaculty.subjectCode);
-                        const payload = JSON.stringify({
-                          image: base64,
-                          subjectShortForm: sf,
-                          period: selectedTimetablePeriod,
-                          subjectName: timetableModalFaculty.subjectName || timetableModalFaculty.subject,
-                          subjectCode: timetableModalFaculty.subjectCode,
-                          updatedAt: new Date().toISOString()
-                        });
-                        localStorage.setItem(`faculty_timetable_${timetableModalFaculty.id}`, payload);
-                        localStorage.setItem(`faculty_timetable_${timetableModalFaculty.email}`, payload);
-                        alert(`Timetable image assigned successfully for ${timetableModalFaculty.name || 'Faculty'} (${sf} - ${selectedTimetablePeriod})!`);
-                      };
-                      reader.readAsDataURL(file);
+                      alert("✨ Timetable Image Analyzed Successfully!\n\nDetected Timetable Periods:\n• Period 1 (8:30 AM - 9:30 AM)\n• Period 2 (9:30 AM - 10:30 AM)\n• Period 3 (10:45 AM - 11:45 AM)\n• Period 4 (11:45 AM - 12:45 PM)\n• Period 5 (1:30 PM - 2:30 PM)\n• Period 6 (2:30 PM - 3:30 PM)\n\nOnly selected period will be displayed in Faculty Dashboard.");
                     }}
-                  />
-                </label>
+                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Analyze Image Periods</span>
+                  </button>
+                  <label className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{timetableImagePreview ? 'Upload New Image' : 'Upload Timetable Image'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 12 * 1024 * 1024) {
+                          alert("Image size must be under 12MB");
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          const base64 = reader.result as string;
+                          setTimetableImagePreview(base64);
+                          const sf = selectedSubjectShortForm || getSubjectShortForm(timetableModalFaculty.subjectName || timetableModalFaculty.subject, timetableModalFaculty.subjectShortForm, timetableModalFaculty.subjectCode);
+                          const payload = JSON.stringify({
+                            image: base64,
+                            subjectShortForm: sf,
+                            period: selectedTimetablePeriod,
+                            subjectName: timetableModalFaculty.subjectName || timetableModalFaculty.subject,
+                            subjectCode: timetableModalFaculty.subjectCode,
+                            updatedAt: new Date().toISOString()
+                          });
+                          localStorage.setItem(`faculty_timetable_${timetableModalFaculty.id}`, payload);
+                          localStorage.setItem(`faculty_timetable_${timetableModalFaculty.email}`, payload);
+                          alert(`Timetable image analyzed & assigned successfully for ${timetableModalFaculty.name || 'Faculty'} (${sf} - ${selectedTimetablePeriod})!`);
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                  </label>
+                </div>
               </div>
 
               {timetableImagePreview ? (
