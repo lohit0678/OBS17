@@ -246,15 +246,63 @@ export default function FacultyDashboard() {
     setSignoffState({});
   }
 
+  // Resolve Subject Short Form matching Admin Batch Creation
+  const resolveFacultyShortForm = (fSubName: string, fSubCode: string, fId: string, fEmail: string): string => {
+    // 1. Check custom saved timetable for faculty
+    const savedRaw = localStorage.getItem(`faculty_timetable_${fId}`) || localStorage.getItem(`faculty_timetable_${fEmail}`);
+    if (savedRaw) {
+      try {
+        const parsed = JSON.parse(savedRaw);
+        if (parsed?.subjectShortForm && parsed.subjectShortForm !== '—') {
+          return parsed.subjectShortForm.toUpperCase();
+        }
+      } catch { /* silent */ }
+    }
+
+    // 2. Search custom_batch_subjects_map created in Admin under Batch
+    try {
+      const batchMapRaw = localStorage.getItem('custom_batch_subjects_map');
+      if (batchMapRaw) {
+        const batchMap = JSON.parse(batchMapRaw);
+        const allSubjects: any[] = Object.values(batchMap).flat();
+
+        const subLower = (fSubName || '').toLowerCase().trim();
+        const codeLower = (fSubCode || '').toLowerCase().trim();
+
+        const matched = allSubjects.find((s: any) => {
+          if (!s) return false;
+          const nameMatch = s.name && subLower && (s.name.toLowerCase().includes(subLower) || subLower.includes(s.name.toLowerCase()));
+          const codeMatch = s.code && codeLower && (s.code.toLowerCase() === codeLower);
+          const sfMatch = s.shortForm && subLower && subLower.includes(s.shortForm.toLowerCase());
+          return nameMatch || codeMatch || sfMatch;
+        });
+
+        if (matched?.shortForm) {
+          return matched.shortForm.toUpperCase();
+        }
+      }
+    } catch { /* silent */ }
+
+    // 3. Helper fallback
+    const sf = getSubjectShortForm(fSubName, undefined, fSubCode);
+    if (sf && sf !== '—') return sf.toUpperCase();
+
+    // 4. Default fallback
+    if (fSubName?.toLowerCase().includes('knowledge') || fSubName?.toLowerCase().includes('intelligent') || fSubCode?.includes('352')) {
+      return 'KIES';
+    }
+
+    return 'KIES';
+  };
+
   const sendClassEmailAlert = async (silent = true) => {
+    const savedShortForm = resolveFacultyShortForm(subjectName, subjectCode, user.id, user.email);
     const savedRaw = localStorage.getItem(`faculty_timetable_${user.id}`) || localStorage.getItem(`faculty_timetable_${user.email}`) || null;
     let savedPeriod: string | null = null;
-    let savedShortForm = getSubjectShortForm(subjectName, undefined, subjectCode);
     if (savedRaw) {
       try {
         const parsed = JSON.parse(savedRaw);
         if (parsed?.period) savedPeriod = parsed.period;
-        if (parsed?.subjectShortForm) savedShortForm = parsed.subjectShortForm;
       } catch { /* silent */ }
     }
 
@@ -315,16 +363,7 @@ export default function FacultyDashboard() {
     const currentDayCode = daysShort[new Date().getDay()];
     const todayStr = new Date().toISOString().split('T')[0];
 
-    const savedRaw = localStorage.getItem(`faculty_timetable_${user.id}`) || localStorage.getItem(`faculty_timetable_${user.email}`) || null;
-    let savedShortForm = getSubjectShortForm(subjectName, undefined, subjectCode);
-    if (savedRaw) {
-      try {
-        const parsed = JSON.parse(savedRaw);
-        if (parsed?.subjectShortForm) savedShortForm = parsed.subjectShortForm;
-      } catch { /* silent */ }
-    }
-
-    const sfUpper = (savedShortForm || getSubjectShortForm(subjectName, undefined, subjectCode)).toUpperCase();
+    const sfUpper = resolveFacultyShortForm(subjectName, subjectCode, user.id, user.email);
 
     // Panimalar Lab Schedule Mapping
     const PANIMALAR_LAB_DAYS: Record<string, string> = {
@@ -1296,18 +1335,16 @@ export default function FacultyDashboard() {
                   {(() => {
                     const savedRaw = localStorage.getItem(`faculty_timetable_${user.id}`) || localStorage.getItem(`faculty_timetable_${user.email}`) || null;
                     let savedPeriod: string | null = null;
-                    let savedShortForm = getSubjectShortForm(subjectName, undefined, subjectCode);
                     if (savedRaw) {
                       try {
                         const parsed = JSON.parse(savedRaw);
                         if (parsed?.period) savedPeriod = parsed.period;
-                        if (parsed?.subjectShortForm) savedShortForm = parsed.subjectShortForm;
                       } catch { /* silent */ }
                     }
 
                     const daysShort = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
                     const currentDayCode = daysShort[new Date().getDay()];
-                    const sfUpper = (savedShortForm || getSubjectShortForm(subjectName, undefined, subjectCode)).toUpperCase();
+                    const sfUpper = resolveFacultyShortForm(subjectName, subjectCode, user.id, user.email);
 
                     // Panimalar Master Matrix Lookup (Exact Lab vs Theory Period Breakdown)
                     const PANIMALAR_FULL_MATRIX: Record<string, {
@@ -1378,7 +1415,7 @@ export default function FacultyDashboard() {
                       return (
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="px-2 py-0.5 bg-blue-100 text-blue-900 border border-blue-300 rounded-md font-mono font-black text-xs">
-                            📖 {savedShortForm} (Theory)
+                            📖 {sfUpper} (Theory)
                           </span>
                           <span className="px-2.5 py-0.5 bg-slate-100 text-slate-800 font-bold rounded-md text-xs">
                             {theoryPeriod}
