@@ -2798,15 +2798,17 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
 
       // Save notification to DB for faculty portal
       try {
-        await (NotificationModel as any).create({
-          id: `notif-${Date.now()}`,
-          userId: req.user?.id || targetEmail,
-          userRole: "faculty",
+        const todayStr = new Date().toISOString().split("T")[0];
+        await NotificationModel.create({
+          id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          type: "schedule",
           title: `Class Schedule Alert: ${subjectShortForm || subjectName || 'Lab Class'}`,
           message: `Today (${date || new Date().toLocaleDateString()}) you have a class scheduled: ${subjectName || 'Lab'} (${subjectShortForm || ''}) during ${period || 'Period 1'}. Section: ${sectionName || 'Section F'}.`,
-          type: "reminder",
-          read: false,
-          createdAt: new Date()
+          sender: req.user?.name || facultyName || "HOD / Academic System",
+          senderRole: "HOD",
+          targetBatch: "All Batches",
+          date: todayStr,
+          readBy: []
         });
       } catch (dbErr) {
         console.warn("[Notification Save Warning]", dbErr);
