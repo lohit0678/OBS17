@@ -35,7 +35,7 @@ const AssignmentSchema = new Schema<IAssignment>(
     status: { type: String, enum: ['Pending', 'Submitted', 'Graded'], default: 'Pending' },
     fileUrl: { type: String, default: "" },
     submittedAt: { type: String, default: "" },
-    score: { type: Number, default: 0 },
+    score: { type: Schema.Types.Mixed, default: 0 },
     remarks: { type: String, default: "" },
     gradedAt: { type: String, default: "" },
     gradedBy: { type: String, default: "" },
@@ -50,6 +50,7 @@ AssignmentSchema.index(
   { unique: true }
 );
 
-export const AssignmentModel =
-  mongoose.models.Assignment ||
-  mongoose.model<IAssignment>("Assignment", AssignmentSchema, "assignments");
+if (mongoose.models.Assignment) {
+  delete (mongoose.models as any).Assignment;
+}
+export const AssignmentModel = mongoose.model<IAssignment>("Assignment", AssignmentSchema, "assignments");

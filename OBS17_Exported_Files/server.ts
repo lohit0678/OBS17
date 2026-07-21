@@ -1450,7 +1450,7 @@ async function startServer() {
       student.attendance = risk.attendance;
       student.riskFlagged = risk.riskFlagged;
       student.riskReason = risk.riskReason;
-      student.markModified("attendanceHistory");
+      if (typeof student.markModified === "function") student.markModified("attendanceHistory");
       await student.save();
 
       // Emit targeted socket events
@@ -1526,7 +1526,7 @@ async function startServer() {
         student.attendance = risk.attendance;
         student.riskFlagged = risk.riskFlagged;
         student.riskReason = risk.riskReason;
-        student.markModified("attendanceHistory");
+        if (typeof student.markModified === "function") student.markModified("attendanceHistory");
         await student.save();
       }
 
@@ -1559,7 +1559,7 @@ async function startServer() {
         student.experiments[idx].recordPdfUrl = recordFile || student.experiments[idx].recordPdfUrl || "uploaded_record.pdf";
         student.experiments[idx].submittedAt = today;
       }
-      student.markModified("experiments");
+      if (typeof student.markModified === "function") student.markModified("experiments");
       await student.save();
 
       res.json({ success: true, students: await getAllStudents() });
@@ -1584,7 +1584,7 @@ async function startServer() {
         student.experiments[idx].status = status;
         student.experiments[idx].score = status === "Approved" ? Number(score) : 0;
         if (remarks !== undefined) student.experiments[idx].remarks = remarks;
-        student.markModified("experiments");
+        if (typeof student.markModified === "function") student.markModified("experiments");
       }
 
       const approved = student.experiments.filter((e: any) => e.status === "Approved").length;
@@ -1676,7 +1676,7 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
             recordPdfUrl: "uploaded_record.pdf"
           });
         }
-        student.markModified("experiments");
+        if (typeof student.markModified === "function") student.markModified("experiments");
       }
 
       if (action === "both" || action === "record_only") {
@@ -1713,7 +1713,7 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
             fileUrl: "uploaded_record.pdf"
           });
         }
-        student.markModified("assignments");
+        if (typeof student.markModified === "function") student.markModified("assignments");
       }
 
       const approved = student.experiments.filter((e: any) => e.status === "Approved").length;
@@ -1773,16 +1773,23 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
         else if (observationStatus === "absent") status = "Absent";
         else if (observationStatus === "od") status = "On Duty";
 
-        const score = observationMarks !== undefined && observationMarks !== ""
-          ? (isNaN(Number(observationMarks)) ? observationMarks : Number(observationMarks))
-          : 0;
+        let score: any = "";
+        if (observationMarks !== undefined && observationMarks !== "") {
+          score = isNaN(Number(observationMarks)) ? observationMarks : Number(observationMarks);
+        } else if (observationStatus === "absent") {
+          score = "A";
+        } else if (observationStatus === "od") {
+          score = "OD";
+        } else if (observationStatus === "tick") {
+          score = 10;
+        }
 
         if (expIdx >= 0) {
           student.experiments[expIdx].id = expId;
           student.experiments[expIdx].subjectCode = activeSubjectCode;
           student.experiments[expIdx].subjectName = activeSubjectName;
           if (observationStatus !== undefined) student.experiments[expIdx].status = status;
-          if (observationMarks !== undefined) student.experiments[expIdx].score = score;
+          if (observationMarks !== undefined || observationStatus !== undefined) student.experiments[expIdx].score = score;
           student.experiments[expIdx].submittedAt = student.experiments[expIdx].submittedAt || today;
         } else {
           student.experiments.push({
@@ -1798,7 +1805,7 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
             remarks: "Observation Evaluated"
           });
         }
-        student.markModified("experiments");
+        if (typeof student.markModified === "function") student.markModified("experiments");
       }
 
       // 2. Update Record
@@ -1833,7 +1840,7 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
             remarks: "Record Evaluated"
           });
         }
-        student.markModified("assignments");
+        if (typeof student.markModified === "function") student.markModified("assignments");
       }
 
       // 3. Recalculate Risk
@@ -1903,7 +1910,7 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
         student.assignments[idx].status = "Submitted";
         student.assignments[idx].fileUrl = filename;
         student.assignments[idx].submittedAt = new Date().toISOString().split("T")[0];
-        student.markModified("assignments");
+        if (typeof student.markModified === "function") student.markModified("assignments");
       }
       await student.save();
       res.json({ success: true, students: await getAllStudents() });
@@ -1928,7 +1935,7 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
         student.assignments[idx].status = "Graded";
         student.assignments[idx].score = Number(score);
         student.assignments[idx].remarks = remarks || "";
-        student.markModified("assignments");
+        if (typeof student.markModified === "function") student.markModified("assignments");
       }
       await student.save();
 

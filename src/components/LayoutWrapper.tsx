@@ -62,12 +62,11 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
 
   // 1. HOD NAVIGATION
   const hodNav: SidebarItem[] = [
-    { label: 'Overview', path: '/hod/overview', icon: <LayoutDashboard className="w-5 h-5" /> },
-    { label: 'Faculty Monitoring', path: '/hod/monitoring', icon: <BarChart2 className="w-5 h-5" /> },
-    { label: 'Faculty Access', path: '/hod/access', icon: <Users className="w-5 h-5" /> },
-    { label: 'Student Records', path: '/hod/students', icon: <GraduationCap className="w-5 h-5" /> },
-    { label: 'Upload Data', path: '/hod/upload', icon: <Upload className="w-5 h-5" /> },
-    { label: 'Settings', path: '/hod/settings', icon: <Settings className="w-5 h-5" /> },
+    { label: 'Overview', path: '/admin/overview', icon: <LayoutDashboard className="w-5 h-5" /> },
+    { label: 'Faculty Access & Monitoring', path: '/admin/access', icon: <Users className="w-5 h-5" /> },
+    { label: 'Batches & Sections', path: '/admin/batches', icon: <Building className="w-5 h-5" /> },
+    { label: 'Timetable Builder', path: '/admin/timetable', icon: <CalendarDays className="w-5 h-5" /> },
+    { label: 'Upload Data', path: '/admin/upload', icon: <Upload className="w-5 h-5" /> },
   ];
 
   // 2. FACULTY NAVIGATION
@@ -75,6 +74,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     { label: 'Section Overview', path: '/faculty/page1', icon: <LayoutDashboard className="w-5 h-5" /> },
     { label: 'Attendance Registry', path: '/faculty/page2', icon: <ClipboardCheck className="w-5 h-5" /> },
     { label: 'Lab Notebook Signoff', path: '/faculty/page3', icon: <FileText className="w-5 h-5" /> },
+    { label: 'Day-by-Day Reports', path: '/faculty/reports', icon: <CalendarDays className="w-5 h-5" /> },
     { label: 'Visuals & Stats', path: '/faculty/page4', icon: <Users className="w-5 h-5" /> },
   ];
 

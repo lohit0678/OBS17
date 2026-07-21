@@ -108,6 +108,7 @@ export interface Faculty {
   workloadHours: number;
   performanceScore: number; // Out of 100
   timetable: TimetableSlot[];
+  timetableImage?: string;
   profilePic?: string;
   phone?: string;
   isActive?: boolean;

@@ -630,7 +630,7 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
       const matched = students.filter(
         (s: any) => s.facultyId === facultyIdOrEmail || s.facultyId?.toLowerCase() === lower || s.facultyEmail?.toLowerCase() === lower
       );
-      return matched.length > 0 ? matched : students;
+      return matched;
     }
 
     const facEmail = faculty.email?.toLowerCase();
@@ -660,15 +660,10 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // 5. Department match
-      if (faculty.department && s.department && faculty.department.toLowerCase() === s.department.toLowerCase()) {
-        return true;
-      }
-
       return false;
     });
 
-    return matched.length > 0 ? matched : students;
+    return matched;
   };
 
 

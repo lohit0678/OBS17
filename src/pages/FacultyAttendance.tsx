@@ -90,7 +90,7 @@ function getLocalDateString(d: Date = new Date()): string {
           return true;
         });
         if (!myItem && selectedDateRecords.length > 0) {
-          myItem = selectedDateRecords.find((h: any) => !h.facultyId && !h.facultyEmail) || selectedDateRecords[selectedDateRecords.length - 1];
+          myItem = selectedDateRecords.find((h: any) => !h.facultyId && !h.facultyEmail);
         }
 
         const statusToSave = localAttendance[student.id] || (myItem ? myItem.status : 'Present');
@@ -276,7 +276,7 @@ function getLocalDateString(d: Date = new Date()): string {
                     return true;
                   });
                   if (!myItem && selectedDateRecords.length > 0) {
-                    myItem = selectedDateRecords.find((h: any) => !h.facultyId && !h.facultyEmail) || selectedDateRecords[selectedDateRecords.length - 1];
+                    myItem = selectedDateRecords.find((h: any) => !h.facultyId && !h.facultyEmail);
                   }
                   const historyItem = myItem;
                   const currentStatus = localAttendance[student.id] || (historyItem ? historyItem.status : 'Present');
@@ -305,7 +305,6 @@ function getLocalDateString(d: Date = new Date()): string {
                       <td className="px-6 py-4">
                         <div>
                           <p className="font-bold text-slate-800 text-sm">{student.name}</p>
-                          <p className="text-xs text-slate-400 font-medium">{student.email}</p>
                         </div>
                       </td>
                       {/* ID */}
@@ -330,6 +329,21 @@ function getLocalDateString(d: Date = new Date()): string {
                       {/* Dynamic Present / Absent / On Duty mark buttons */}
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-center gap-2.5">
+                          <select
+                            value={currentStatus}
+                            onChange={(e) => handleToggle(student.id, e.target.value as 'Present' | 'Absent' | 'On Duty')}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wide border cursor-pointer focus:outline-none focus:ring-2 transition-all shadow-xs ${
+                              currentStatus === 'Present'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                : currentStatus === 'On Duty'
+                                ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                : 'bg-rose-50 text-rose-800 border-rose-300'
+                            }`}
+                          >
+                            <option value="Present">✔ Present (P)</option>
+                            <option value="Absent">✖ Absent (A)</option>
+                            <option value="On Duty">⚡ On Duty (OD)</option>
+                          </select>
                           {/* Mark Present */}
                           <button
                             onClick={() => handleToggle(student.id, 'Present')}

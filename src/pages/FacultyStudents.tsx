@@ -123,6 +123,11 @@ export default function FacultyStudents() {
   const myStudents = getFacultyStudents(user.email || user.id);
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
 
+  const formatRollNo = (rollNo: string | undefined | null): string => {
+    if (!rollNo) return '-';
+    return String(rollNo).replace(/\s+/g, '').toUpperCase();
+  };
+
   // Active student selection for in-page review console
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
 
@@ -1127,8 +1132,8 @@ export default function FacultyStudents() {
                             }`}
                             onClick={() => setSelectedStudentId(student.id)}
                           >
-                            <td rowSpan={3} className="px-4 py-3 text-center border-r border-slate-100 bg-slate-50/40 align-middle font-bold text-slate-700">
-                              {student.rollNo}
+                            <td rowSpan={3} className="px-4 py-3 text-center border-r border-slate-100 bg-slate-50/40 align-middle font-bold text-slate-700 whitespace-nowrap">
+                              {formatRollNo(student.rollNo)}
                             </td>
                             <td rowSpan={3} className="px-5 py-4 border-r border-slate-100 align-middle">
                               <div>

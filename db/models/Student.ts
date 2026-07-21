@@ -9,10 +9,18 @@ const LabExperimentSchema = new Schema(
     observationPdfUrl: String,
     recordPdfUrl: String,
     status: { type: String, default: "Not Submitted" },
-    score: { type: Number, default: 0 },
+    score: { type: Schema.Types.Mixed, default: 0 },
     maxScore: Number,
     remarks: String,
     submittedAt: String,
+    submittedAtTime: String,
+    isLateFacultySubmission: { type: Boolean, default: false },
+    facultySubmissionTimingStatus: { type: String, default: "On-Time" },
+    subjectCode: String,
+    subjectName: String,
+    experimentNumber: Number,
+    facultyId: String,
+    signedOffBy: String
   },
   { _id: false }
 );
@@ -25,10 +33,15 @@ const AssignmentSchema = new Schema(
     dueDate: String,
     fileUrl: String,
     status: { type: String, default: "Pending" },
-    score: Number,
+    score: { type: Schema.Types.Mixed, default: 0 },
     maxScore: Number,
     remarks: String,
     submittedAt: String,
+    subjectCode: String,
+    subjectName: String,
+    experimentNumber: Number,
+    facultyId: String,
+    gradedBy: String
   },
   { _id: false }
 );
@@ -149,5 +162,7 @@ const StudentSchema = new Schema(
   }
 );
 
-export const StudentModel =
-  mongoose.models.Student ?? mongoose.model("Student", StudentSchema);
+if (mongoose.models.Student) {
+  delete (mongoose.models as any).Student;
+}
+export const StudentModel = mongoose.model("Student", StudentSchema);

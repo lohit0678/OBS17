@@ -9,7 +9,7 @@ export interface ILabExperiment extends Document {
   name: string;
   dueDate: string;
   status: 'Not Submitted' | 'Submitted - Pending' | 'Approved' | 'Rejected';
-  score: number;
+  score: any;
   remarks?: string;
   observationSignoff: 'none' | 'tick' | 'cross';
   recordSignoff: 'none' | 'tick' | 'cross';
@@ -33,10 +33,10 @@ const LabExperimentSchema = new Schema<ILabExperiment>(
     dueDate: { type: String, default: "" },
     status: {
       type: String,
-      enum: ['Not Submitted', 'Submitted - Pending', 'Approved', 'Rejected'],
+      enum: ['Not Submitted', 'Submitted - Pending', 'Approved', 'Rejected', 'Absent', 'On Duty'],
       default: 'Not Submitted',
     },
-    score: { type: Number, default: 0 },
+    score: { type: Schema.Types.Mixed, default: 0 },
     remarks: { type: String, default: "" },
     observationSignoff: { type: String, enum: ['none', 'tick', 'cross'], default: 'none' },
     recordSignoff: { type: String, enum: ['none', 'tick', 'cross'], default: 'none' },
@@ -56,6 +56,7 @@ LabExperimentSchema.index(
   { unique: true }
 );
 
-export const LabExperimentModel =
-  mongoose.models.LabExperiment ||
-  mongoose.model<ILabExperiment>("LabExperiment", LabExperimentSchema, "lab_experiments");
+if (mongoose.models.LabExperiment) {
+  delete (mongoose.models as any).LabExperiment;
+}
+export const LabExperimentModel = mongoose.model<ILabExperiment>("LabExperiment", LabExperimentSchema, "lab_experiments");

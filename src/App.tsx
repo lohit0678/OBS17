@@ -52,12 +52,19 @@ export default function App() {
             {/* Gateways */}
             <Route path="/login" element={<Login />} />
 
-            {/* ADMIN ROUTES */}
+            {/* ADMIN & HOD ROUTES */}
             <Route path="/admin/dashboard" element={<Navigate to="/admin/overview" replace />} />
+            <Route path="/hod/dashboard" element={<Navigate to="/admin/overview" replace />} />
+            <Route path="/hod/overview" element={<Navigate to="/admin/overview" replace />} />
+            <Route path="/hod/monitoring" element={<Navigate to="/admin/access" replace />} />
+            <Route path="/hod/access" element={<Navigate to="/admin/access" replace />} />
+            <Route path="/hod/upload" element={<Navigate to="/admin/upload" replace />} />
+            <Route path="/hod/batches" element={<Navigate to="/admin/batches" replace />} />
+            <Route path="/hod/timetable" element={<Navigate to="/admin/timetable" replace />} />
             <Route
               path="/admin/:tab"
               element={
-                <ProtectedRoute allowedRoles={['Admin']}>
+                <ProtectedRoute allowedRoles={['Admin', 'HOD']}>
                   <AdminDashboard />
                 </ProtectedRoute>
               }
@@ -66,7 +73,7 @@ export default function App() {
             <Route
               path="/admin/faculty"
               element={
-                <ProtectedRoute allowedRoles={['Admin']}>
+                <ProtectedRoute allowedRoles={['Admin', 'HOD']}>
                   <AdminFaculty />
                 </ProtectedRoute>
               }
@@ -74,7 +81,7 @@ export default function App() {
             <Route
               path="/admin/faculty/:facultyId"
               element={
-                <ProtectedRoute allowedRoles={['Admin']}>
+                <ProtectedRoute allowedRoles={['Admin', 'HOD']}>
                   <AdminFaculty />
                 </ProtectedRoute>
               }
@@ -82,7 +89,7 @@ export default function App() {
             <Route
               path="/admin/students"
               element={
-                <ProtectedRoute allowedRoles={['Admin']}>
+                <ProtectedRoute allowedRoles={['Admin', 'HOD']}>
                   <AdminStudents />
                 </ProtectedRoute>
               }
@@ -90,7 +97,7 @@ export default function App() {
             <Route
               path="/admin/students/:studentId"
               element={
-                <ProtectedRoute allowedRoles={['Admin']}>
+                <ProtectedRoute allowedRoles={['Admin', 'HOD']}>
                   <StudentDetail />
                 </ProtectedRoute>
               }

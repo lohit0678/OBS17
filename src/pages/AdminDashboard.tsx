@@ -8,7 +8,7 @@ import {
   Plus, Upload, ChevronDown, X, Check, AlertTriangle,
   GraduationCap, Building2, Calendar, FileSpreadsheet,
   Layers, UserCheck, Trash2, RefreshCw, Eye, BookOpenCheck,
-  ClipboardList, Send, Search, Mail, Pencil, Activity,
+  ClipboardList, Send, Search, Mail, Pencil, Activity, Clock, CheckCircle, CheckCircle2, Download,
   Wifi, WifiOff, TrendingUp
 } from 'lucide-react';
 
@@ -1388,6 +1388,326 @@ function FacultyAssignedStudentsModal({ faculty, section, batch, token, onClose 
   );
 }
 
+export function exportFacultyObservationMarksExcel(faculty: any, students: any[]) {
+  const facEmail = String(faculty.email || '').toLowerCase();
+  const facId = String(faculty.id || faculty._id || '').toLowerCase();
+  const facSubjCode = String(faculty.subjectCode || '').toLowerCase();
+  const facSubjName = String(faculty.subjectName || (Array.isArray(faculty.subjectsHandled) && faculty.subjectsHandled[0]) || '').toLowerCase();
+
+  const facSections = [
+    faculty.section,
+    faculty.sections,
+    ...(Array.isArray(faculty.assignedSectionIds) ? faculty.assignedSectionIds : [])
+  ].filter(Boolean).map((x: string) => String(x).toLowerCase());
+
+  // 1. Get all students that belong to this faculty's assigned section or account
+  let facStudents = students.filter((s: any) => {
+    const sFacId = String(s.facultyId || '').toLowerCase();
+    const sFacEmail = String(s.facultyEmail || '').toLowerCase();
+    if (facId && (sFacId === facId || sFacEmail === facId)) return true;
+    if (facEmail && (sFacId === facEmail || sFacEmail === facEmail)) return true;
+    if (faculty.sectionId && (s.sectionId === faculty.sectionId || s.section === faculty.sectionId)) return true;
+    if (Array.isArray(faculty.assignedSectionIds) && (faculty.assignedSectionIds.includes(s.sectionId) || faculty.assignedSectionIds.includes(s.section))) return true;
+    if (facSections.length > 0) {
+      const sSec = String(s.section || '').toLowerCase();
+      const sSecId = String(s.sectionId || '').toLowerCase();
+      if (facSections.some(sec => sec === sSec || sec === sSecId || sSec.endsWith(sec) || sec.endsWith(sSec))) {
+        return true;
+      }
+    }
+    const hasExp = (s.experiments || []).some((e: any) => {
+      const eFac = String(e.signedOffBy || e.facultyId || '').toLowerCase();
+      const eSubj = String(e.subjectCode || e.subjectName || '').toLowerCase();
+      return (eFac && (eFac === facId || eFac === facEmail)) || (facSubjCode && eSubj === facSubjCode);
+    });
+    return hasExp;
+  });
+
+  // Fallback: If facStudents is empty, select students matching faculty's department or batch
+  if (facStudents.length === 0) {
+    const facDept = String(faculty.department || '').toLowerCase();
+    facStudents = students.filter((s: any) => {
+      if (facDept && String(s.department || '').toLowerCase() === facDept) return true;
+      return true;
+    });
+  }
+
+  const targetStudents = facStudents;
+
+  const rows = targetStudents.map((st: any, idx: number) => {
+    const rowObj: Record<string, any> = {
+      "Faculty Name": faculty.name || 'Faculty',
+      "Subject Code": faculty.subjectCode || '-',
+      "S.No": idx + 1,
+      "Roll No": st.rollNo || '-',
+      "Register No": st.registerNo || '-',
+      "Student Name": st.name,
+      "Section": st.section || 'A',
+      "Batch": st.batch || 'General',
+      "Attendance %": `${st.attendance ?? 0}%`
+    };
+
+    let totalScore = 0;
+    let validScoresCount = 0;
+
+    for (let expNum = 1; expNum <= 12; expNum++) {
+      // Find experiment matching expNum and this faculty/subject
+      const exp = (st.experiments || []).find((e: any) => {
+        const matchesExpNum = e.experimentNumber === expNum || e.name === `Experiment ${expNum}` || e.id?.endsWith(`-${expNum}`);
+        if (!matchesExpNum) return false;
+
+        const eFac = String(e.signedOffBy || e.facultyId || '').toLowerCase();
+        const eSubjCode = String(e.subjectCode || '').toLowerCase();
+        const eSubjName = String(e.subjectName || '').toLowerCase();
+        const eId = String(e.id || '').toLowerCase();
+
+        if (eFac) {
+          const facMatch = eFac === facId || eFac === facEmail || (facId && eFac.includes(facId)) || (facEmail && eFac.includes(facEmail));
+          if (facMatch) return true;
+        }
+
+        if (facSubjCode && eSubjCode && eSubjCode === facSubjCode) return true;
+        if (facSubjName && eSubjName && eSubjName === facSubjName) return true;
+        if (eId && ((facId && eId.includes(facId)) || (facEmail && eId.includes(facEmail)))) return true;
+
+        return !eFac && !eSubjCode;
+      });
+
+      let markStr = '-';
+      if (exp) {
+        if (exp.score !== undefined && exp.score !== null && exp.score !== '') {
+          markStr = String(exp.score);
+          let rawNum = Number(exp.score);
+          if (isNaN(rawNum) && String(exp.score).includes('/')) {
+            const parts = String(exp.score).split('/');
+            rawNum = Number(parts[parts.length - 1]);
+          }
+          if (!isNaN(rawNum)) {
+            totalScore += rawNum;
+            validScoresCount++;
+          }
+        } else if (exp.status === 'Approved') {
+          markStr = '10';
+          totalScore += 10;
+          validScoresCount++;
+        } else if (exp.status === 'Absent') {
+          markStr = 'A';
+        } else if (exp.status === 'On Duty') {
+          markStr = 'OD';
+        }
+      }
+      rowObj[`Exp ${expNum}`] = markStr;
+    }
+
+    rowObj["Total Observation Score"] = validScoresCount > 0 ? totalScore : '-';
+    return rowObj;
+  });
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(rows.length > 0 ? rows : [
+    { "Note": `No student observation records found for faculty ${faculty.name || faculty.email}` }
+  ]);
+
+  XLSX.utils.book_append_sheet(wb, ws, "Observation Marks Matrix");
+  const cleanFacName = (faculty.name || 'Faculty').replace(/[^a-zA-Z0-9]/g, '_');
+  const cleanSubjCode = (faculty.subjectCode || 'SUBJ').replace(/[^a-zA-Z0-9]/g, '_');
+  XLSX.writeFile(wb, `Observation_Marks_${cleanFacName}_${cleanSubjCode}.xlsx`);
+}
+
+function FacultyMonitoringModal({ faculty, token, onClose }: {
+  faculty: any; token: string; onClose: () => void;
+}) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const targetId = faculty.id || faculty._id || faculty.email;
+    fetch(`/api/admin/faculty/${targetId}/monitoring`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) setError(d.error);
+        else setData(d);
+      })
+      .catch(() => setError('Failed to load live monitoring details.'))
+      .finally(() => setLoading(false));
+  }, [faculty, token]);
+
+  const handleExportFacultyObservationExcel = () => {
+    if (!data) return;
+    const wb = XLSX.utils.book_new();
+
+    // 1. Observation Marks Roster
+    const rows = (data.allLogs || []).map((log: any, idx: number) => ({
+      "S.No": idx + 1,
+      "Faculty Name": data.faculty.name || data.faculty.email,
+      "Faculty Email": data.faculty.email,
+      "Subject Code": log.subjectCode || data.faculty.subjectCode || '-',
+      "Subject Name": log.subjectName || data.faculty.subjectName || '-',
+      "Roll No": log.rollNo,
+      "Student Name": log.studentName,
+      "Register Number": log.registerNo || '-',
+      "Section": log.section || 'A',
+      "Experiment Title": log.experimentName,
+      "Observation Score / Mark": log.score,
+      "Status": log.status || 'Approved',
+      "Evaluation Date": log.date,
+      "Submission Time": log.submittedAtTime || 'During Class',
+      "Faculty Submission Timeliness": log.isLate ? "Late Submission (After 3:30 PM)" : "On-Time (8:00 AM - 3:30 PM)"
+    }));
+
+    const wsObservation = XLSX.utils.json_to_sheet(rows.length > 0 ? rows : [
+      { "Note": `No observation mark evaluations recorded for faculty ${data.faculty.name || data.faculty.email}` }
+    ]);
+    XLSX.utils.book_append_sheet(wb, wsObservation, "Observation Marks");
+
+    // 2. Late Submissions Audit Log Sheet
+    const lateRows = (data.lateLogs || []).map((log: any, idx: number) => ({
+      "S.No": idx + 1,
+      "Faculty Name": data.faculty.name || data.faculty.email,
+      "Roll No": log.rollNo,
+      "Student Name": log.studentName,
+      "Experiment Title": log.experimentName,
+      "Subject": log.subjectCode ? `${log.subjectCode} - ${log.subjectName}` : data.faculty.subjectName,
+      "Evaluation Date": log.date,
+      "Submission Time (After 3:30 PM)": log.submittedAtTime,
+      "Score": log.score,
+      "Audit Delay Flag": "Late Entry (> 3:30 PM Cutoff)"
+    }));
+
+    const wsLate = XLSX.utils.json_to_sheet(lateRows.length > 0 ? lateRows : [
+      { "Compliance Audit": "No late submissions recorded after 3:30 PM." }
+    ]);
+    XLSX.utils.book_append_sheet(wb, wsLate, "Late Submissions (>3.30PM)");
+
+    const cleanFacName = (data.faculty.name || 'Faculty').replace(/[^a-zA-Z0-9]/g, '_');
+    XLSX.writeFile(wb, `Faculty_Observation_Marks_${cleanFacName}.xlsx`);
+  };
+
+  return (
+    <Modal title={`Live Monitoring & Late Submissions Log — ${faculty.name || faculty.email}`} onClose={onClose} wide>
+      {loading ? (
+        <div className="flex justify-center py-12"><Spinner /></div>
+      ) : error ? (
+        <div className="p-6 text-center text-rose-600 bg-rose-50 rounded-2xl text-xs font-bold">{error}</div>
+      ) : (
+        <div className="space-y-6">
+          {/* COLLEGE TIMINGS BANNER & EXPORT BUTTON */}
+          <div className="p-4 bg-indigo-50/80 border border-indigo-100 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-indigo-600 text-white rounded-xl shrink-0">
+                <Clock className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-extrabold text-slate-800">College Operating Timings: 8:00 AM – 3:30 PM</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Observation mark entries submitted after 3:30 PM are flagged as Late Submissions by Faculty.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleExportFacultyObservationExcel}
+                className="py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 shrink-0"
+                title="Download Faculty Observation Marks & Timeliness Audit Report as Excel (.xlsx)"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export Observation Marks (.xlsx)</span>
+              </button>
+              <div className="px-3 py-2 bg-white border border-indigo-200 rounded-xl text-indigo-700 text-xs font-extrabold shrink-0">
+                Cutoff: 3:30 PM
+              </div>
+            </div>
+          </div>
+
+          {/* SUMMARY KPI CARDS */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="p-4 bg-white border border-slate-100 rounded-2xl shadow-xs">
+              <p className="text-[10px] font-black uppercase text-slate-400">Timeliness Compliance</p>
+              <h3 className="text-2xl font-black text-slate-800 mt-1">{data?.summary?.complianceRate}%</h3>
+              <p className="text-[10px] text-emerald-600 font-bold mt-0.5">{data?.summary?.onTimeCount} On-Time Entries</p>
+            </div>
+            <div className="p-4 bg-white border border-slate-100 rounded-2xl shadow-xs">
+              <p className="text-[10px] font-black uppercase text-slate-400">Total Evaluations</p>
+              <h3 className="text-2xl font-black text-indigo-600 mt-1">{data?.summary?.totalEvaluations}</h3>
+              <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Logged Sign-offs</p>
+            </div>
+            <div className="p-4 bg-white border border-slate-100 rounded-2xl shadow-xs">
+              <p className="text-[10px] font-black uppercase text-slate-400">Late Submissions (&gt; 3:30 PM)</p>
+              <h3 className="text-2xl font-black text-rose-600 mt-1">{data?.summary?.lateCount}</h3>
+              <p className="text-[10px] text-rose-700 font-bold mt-0.5">Entries After 3:30 PM</p>
+            </div>
+          </div>
+
+          {/* LATE SUBMISSIONS LOG TABLE */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-500" />
+                Late Submissions Log ({data?.lateLogs?.length || 0})
+              </h4>
+              <span className="text-[10px] text-slate-400 font-bold">Updated Live</span>
+            </div>
+
+            {data?.lateLogs?.length === 0 ? (
+              <div className="p-8 text-center bg-emerald-50/50 rounded-2xl border border-emerald-100">
+                <CheckCircle className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                <p className="text-xs font-extrabold text-emerald-800">Excellent Compliance!</p>
+                <p className="text-[11px] text-emerald-600 mt-0.5">No observation entries logged after 3:30 PM for this faculty member.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 text-[10px] font-extrabold uppercase">
+                      <th className="px-4 py-3 text-center">#</th>
+                      <th className="px-4 py-3 text-left">Date</th>
+                      <th className="px-4 py-3 text-left">Student</th>
+                      <th className="px-4 py-3 text-left">Experiment &amp; Subject</th>
+                      <th className="px-4 py-3 text-center">Submission Time</th>
+                      <th className="px-4 py-3 text-center">Mark Entered</th>
+                      <th className="px-4 py-3 text-center">Timing Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {data.lateLogs.map((log: any, i: number) => (
+                      <tr key={i} className="hover:bg-slate-50/60 transition">
+                        <td className="px-4 py-3 text-center font-bold text-slate-400">{i + 1}</td>
+                        <td className="px-4 py-3 font-semibold text-slate-700">{log.date}</td>
+                        <td className="px-4 py-3">
+                          <p className="font-bold text-slate-800">{log.studentName}</p>
+                          <p className="text-[10px] text-slate-400 font-mono">{log.rollNo}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-bold text-slate-700">{log.experimentName}</p>
+                          <p className="text-[10px] text-slate-400">{log.subjectCode} · {log.subjectName}</p>
+                        </td>
+                        <td className="px-4 py-3 text-center font-bold text-rose-600 font-mono">
+                          {log.submittedAtTime}
+                        </td>
+                        <td className="px-4 py-3 text-center font-extrabold text-slate-800">
+                          {log.score}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-[10px] font-black uppercase">
+                            Late (&gt; 3:30 PM)
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
   faculties: any[]; batches: Batch[]; sections: Section[];
   token: string; onFacultiesChange: (facs: any[]) => void;
@@ -1397,6 +1717,9 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
   const [search,            setSearch]            = useState('');
   const [assignModal,       setAssignModal]       = useState<any | null>(null);
   const [viewStudentsModal, setViewStudentsModal] = useState<{ faculty: any; section: Section; batch: Batch | undefined } | null>(null);
+  const [monitoringModal,   setMonitoringModal]   = useState<any | null>(null);
+  const [timetableModalFaculty, setTimetableModalFaculty] = useState<any | null>(null);
+  const [timetableImagePreview, setTimetableImagePreview] = useState<string | null>(null);
   const [showAddForm,       setShowAddForm]       = useState(false);
   const [toast,             setToast]             = useState<{ msg: string; type: 'success'|'error' } | null>(null);
   const [saving,            setSaving]            = useState(false);
@@ -1456,6 +1779,11 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
         <FacultyAssignedStudentsModal
           faculty={viewStudentsModal.faculty} section={viewStudentsModal.section} batch={viewStudentsModal.batch}
           token={token} onClose={() => setViewStudentsModal(null)}
+        />
+      )}
+      {monitoringModal && (
+        <FacultyMonitoringModal
+          faculty={monitoringModal} token={token} onClose={() => setMonitoringModal(null)}
         />
       )}
 
@@ -1590,6 +1918,24 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => {
+                              const savedImg = localStorage.getItem(`faculty_timetable_${f.id}`) || localStorage.getItem(`faculty_timetable_${f.email}`) || f.timetableImage || null;
+                              setTimetableImagePreview(savedImg);
+                              setTimetableModalFaculty(f);
+                            }}
+                            title="Assign/Upload Subject Timetable Image for this Faculty Member"
+                            className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer transition border border-indigo-200/60 shadow-xs shrink-0"
+                          >
+                            <Calendar className="w-3.5 h-3.5 text-indigo-600" /> Timetable
+                          </button>
+                          <button
+                            onClick={() => setMonitoringModal(f)}
+                            title="Faculty Live Monitoring & Late Submissions Log (After 3:30 PM)"
+                            className="px-2.5 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer transition border border-purple-200/60 shadow-xs shrink-0"
+                          >
+                            <Activity className="w-3.5 h-3.5" /> Live Monitoring
+                          </button>
                           {assignedSection && (
                             <button
                               onClick={() => setViewStudentsModal({ faculty: f, section: assignedSection, batch: assignedBatch || undefined })}
@@ -1630,6 +1976,160 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
           </div>
         )}
       </div>
+
+      {/* ── TIMETABLE ASSIGNMENT MODAL (HOD / ADMIN) ───────────────────────── */}
+      {timetableModalFaculty && (
+        <Modal 
+          title={`Assign Subject Timetable — ${timetableModalFaculty.name || timetableModalFaculty.email}`} 
+          onClose={() => {
+            setTimetableModalFaculty(null);
+            setTimetableImagePreview(null);
+          }} 
+          wide
+        >
+          <div className="space-y-5 p-2">
+            {/* Faculty details summary banner */}
+            <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-4 rounded-2xl border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-extrabold text-sm text-white">{timetableModalFaculty.name || 'Faculty Member'}</h3>
+                  <p className="text-xs text-indigo-300 font-medium">{timetableModalFaculty.email}</p>
+                </div>
+                <span className="px-3 py-1 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-bold rounded-lg uppercase">
+                  {timetableModalFaculty.department || 'Department Faculty'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs pt-2 border-t border-slate-800">
+                <div>
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Handling Subject</span>
+                  <span className="font-extrabold text-white">{timetableModalFaculty.subjectName || timetableModalFaculty.subject || '—'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Subject Code</span>
+                  <span className="font-mono font-bold text-indigo-300">{timetableModalFaculty.subjectCode || '—'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Handling Section</span>
+                  <span className="font-bold text-emerald-400">
+                    {(() => {
+                      const sectionObj = timetableModalFaculty.sectionId ? sections.find((s: any) => s.id === timetableModalFaculty.sectionId) : null;
+                      const assignedSectionNames = [
+                        sectionObj?.name,
+                        timetableModalFaculty.section,
+                        timetableModalFaculty.sections,
+                        timetableModalFaculty.batch,
+                        ...(Array.isArray(timetableModalFaculty.assignedSectionIds) ? timetableModalFaculty.assignedSectionIds.map((sid: string) => sections.find((s: any) => s.id === sid)?.name || sid) : [])
+                      ].filter(Boolean);
+
+                      return assignedSectionNames.length > 0
+                        ? Array.from(new Set(assignedSectionNames)).join(", ")
+                        : "Section F";
+                    })()}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Upload & Preview Section */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider">Handling Subject Timetable Schedule Image</h4>
+                <label className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm">
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>{timetableImagePreview ? 'Upload New Image' : 'Upload Timetable Image'}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 12 * 1024 * 1024) {
+                        alert("Image size must be under 12MB");
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        const base64 = reader.result as string;
+                        setTimetableImagePreview(base64);
+                        localStorage.setItem(`faculty_timetable_${timetableModalFaculty.id}`, base64);
+                        localStorage.setItem(`faculty_timetable_${timetableModalFaculty.email}`, base64);
+                        alert(`Timetable image assigned successfully for ${timetableModalFaculty.name || 'Faculty'}!`);
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                </label>
+              </div>
+
+              {timetableImagePreview ? (
+                <div className="space-y-3">
+                  <div className="bg-slate-900/95 p-3 rounded-2xl border border-slate-800 flex justify-center items-center overflow-hidden max-h-[500px] shadow-lg">
+                    <img 
+                      src={timetableImagePreview} 
+                      alt="Faculty Timetable" 
+                      className="max-h-[480px] w-auto object-contain rounded-xl shadow-md"
+                    />
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-emerald-600 font-bold flex items-center gap-1">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>Timetable image currently active for this faculty</span>
+                    </span>
+                    <button
+                      onClick={() => {
+                        if (confirm("Remove timetable image for this faculty member?")) {
+                          setTimetableImagePreview(null);
+                          localStorage.removeItem(`faculty_timetable_${timetableModalFaculty.id}`);
+                          localStorage.removeItem(`faculty_timetable_${timetableModalFaculty.email}`);
+                        }
+                      }}
+                      className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 rounded-xl font-bold transition cursor-pointer border border-rose-200"
+                    >
+                      Remove Image
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <label className="border-2 border-dashed border-slate-300 hover:border-indigo-500 rounded-3xl p-10 flex flex-col items-center justify-center text-center cursor-pointer transition hover:bg-indigo-50/20 space-y-3">
+                  <div className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100">
+                    <Calendar className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <p className="font-extrabold text-slate-800 text-sm">Click or Drag & Drop Timetable Image Here</p>
+                    <p className="text-xs text-slate-400 font-medium mt-1">PNG, JPG, WEBP formats supported (Max 12MB)</p>
+                  </div>
+                  <span className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-extrabold text-xs shadow-sm">
+                    Select Timetable Image File
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 12 * 1024 * 1024) {
+                        alert("Image size must be under 12MB");
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        const base64 = reader.result as string;
+                        setTimetableImagePreview(base64);
+                        localStorage.setItem(`faculty_timetable_${timetableModalFaculty.id}`, base64);
+                        localStorage.setItem(`faculty_timetable_${timetableModalFaculty.email}`, base64);
+                        alert(`Timetable image assigned successfully for ${timetableModalFaculty.name || 'Faculty'}!`);
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -1711,14 +2211,15 @@ function NotificationsTab({ batches, token }: { batches: Batch[]; token: string;
 // ═══════════════════════════════════════════════════════════════════════════════
 //  TAB 6 — LIVE MONITORING
 // ═══════════════════════════════════════════════════════════════════════════════
-function MonitoringTab({ faculties, students, sections, batches, onRefresh }: {
-  faculties: any[]; students: any[]; sections: any[]; batches: any[];
+function MonitoringTab({ faculties, students, sections, batches, token, onRefresh }: {
+  faculties: any[]; students: any[]; sections: any[]; batches: any[]; token: string;
   onRefresh: () => Promise<void>;
 }) {
   const [tab, setTab] = useState<'faculty' | 'student'>('faculty');
   const [facultySearch, setFacultySearch] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
   const [selectedSectionFilter, setSelectedSectionFilter] = useState<string>('');
+  const [monitoringModal, setMonitoringModal] = useState<any | null>(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [isLive, setIsLive] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -1795,6 +2296,13 @@ function MonitoringTab({ faculties, students, sections, batches, onRefresh }: {
 
   return (
     <div className="space-y-5">
+      {monitoringModal && (
+        <FacultyMonitoringModal
+          faculty={monitoringModal}
+          token={token}
+          onClose={() => setMonitoringModal(null)}
+        />
+      )}
 
       {/* ── Live Status Bar ──────────────────────────────────────────────────── */}
       <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border border-slate-700/50 shadow-lg">
@@ -1909,134 +2417,147 @@ function MonitoringTab({ faculties, students, sections, batches, onRefresh }: {
             {filteredFaculties.length === 0 ? (
               <div className="text-center py-10 text-slate-400 italic text-sm">No faculty found.</div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {filteredFaculties.map(f => {
-                  const sectionObj = f.sectionId ? sections.find((s: any) => s.id === f.sectionId) : null;
-                  const assignedSectionNames = [
-                    sectionObj?.name,
-                    f.section,
-                    f.sections,
-                    ...(Array.isArray(f.assignedSectionIds) ? f.assignedSectionIds.map((sid: string) => sections.find((s: any) => s.id === sid)?.name || sid) : [])
-                  ].filter(Boolean);
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">
+                        <th className="px-4 py-3.5 text-center">S.No</th>
+                        <th className="px-4 py-3.5">Faculty Name</th>
+                        <th className="px-4 py-3.5">Department</th>
+                        <th className="px-4 py-3.5">Subject</th>
+                        <th className="px-4 py-3.5">Lab Room</th>
+                        <th className="px-4 py-3.5 text-center">Assigned Section</th>
+                        <th className="px-4 py-3.5 text-center">Students</th>
+                        <th className="px-4 py-3.5 text-center">Status</th>
+                        <th className="px-4 py-3.5 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+                      {filteredFaculties.map((f, idx) => {
+                        const sectionObj = f.sectionId ? sections.find((s: any) => s.id === f.sectionId) : null;
+                        const assignedSectionNames = [
+                          sectionObj?.name,
+                          f.section,
+                          f.sections,
+                          ...(Array.isArray(f.assignedSectionIds) ? f.assignedSectionIds.map((sid: string) => sections.find((s: any) => s.id === sid)?.name || sid) : [])
+                        ].filter(Boolean);
 
-                  const sectionNameDisplay = assignedSectionNames.length > 0
-                    ? Array.from(new Set(assignedSectionNames)).join(", ")
-                    : "Unassigned";
+                        const sectionNameDisplay = assignedSectionNames.length > 0
+                          ? Array.from(new Set(assignedSectionNames)).join(", ")
+                          : "Unassigned";
 
-                  const batchObj = f.batchId ? batches.find((b: any) => b.id === f.batchId) : null;
-                  const batchName = f.batch || batchObj?.name || (sectionObj?.batchId ? batches.find((b: any) => b.id === sectionObj.batchId)?.name : null) || "";
+                        const batchObj = f.batchId ? batches.find((b: any) => b.id === f.batchId) : null;
+                        const batchName = f.batch || batchObj?.name || (sectionObj?.batchId ? batches.find((b: any) => b.id === sectionObj.batchId)?.name : null) || "";
 
-                  const subjectDisplayName = f.subjectName || (Array.isArray(f.subjectsHandled) && f.subjectsHandled[0]) || f.subject || "—";
+                        const subjectDisplayName = f.subjectName || (Array.isArray(f.subjectsHandled) && f.subjectsHandled[0]) || f.subject || "—";
 
-                  // Comprehensive Student Count matching for this faculty
-                  const facEmail = f.email?.toLowerCase();
-                  const facId = f.id;
-                  const facSections = [
-                    f.section,
-                    f.sections,
-                    ...(Array.isArray(f.assignedSectionIds) ? f.assignedSectionIds : [])
-                  ].filter(Boolean).map((x: string) => String(x).toLowerCase());
+                        // Comprehensive Student Count matching for this faculty
+                        const facEmail = f.email?.toLowerCase();
+                        const facId = f.id;
+                        const facSections = [
+                          f.section,
+                          f.sections,
+                          ...(Array.isArray(f.assignedSectionIds) ? f.assignedSectionIds : [])
+                        ].filter(Boolean).map((x: string) => String(x).toLowerCase());
 
-                  const studentCount = students.filter((s: any) => {
-                    if (s.facultyId === facId || (facEmail && (s.facultyId?.toLowerCase() === facEmail || s.facultyEmail?.toLowerCase() === facEmail))) return true;
-                    if (f.sectionId && (s.sectionId === f.sectionId || s.section === f.sectionId)) return true;
-                    if (Array.isArray(f.assignedSectionIds) && (f.assignedSectionIds.includes(s.sectionId) || f.assignedSectionIds.includes(s.section))) return true;
-                    if (facSections.length > 0) {
-                      const sSec = String(s.section || '').toLowerCase();
-                      const sSecId = String(s.sectionId || '').toLowerCase();
-                      if (facSections.some(sec => sec === sSec || sec === sSecId || sSec.endsWith(sec) || sec.endsWith(sSec))) {
-                        return true;
-                      }
-                    }
-                    return false;
-                  }).length;
-
-                  return (
-                    <div key={f.id} className={`bg-white border rounded-2xl p-4 space-y-3 shadow-sm hover:shadow-md transition-all ${
-                      f.isActive ? 'border-slate-200 hover:border-indigo-200' : 'border-slate-100 opacity-70'
-                    }`}>
-                      {/* Header row */}
-                      <div className="flex items-start gap-3">
-                        <div className="relative shrink-0">
-                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-extrabold text-sm shadow">
-                            {(f.name || f.email || 'F').charAt(0).toUpperCase()}
-                          </div>
-                          <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
-                            f.isActive ? 'bg-emerald-400' : 'bg-slate-300'
-                          }`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-extrabold text-slate-800 text-sm truncate">
-                            {f.name || <span className="italic text-slate-400 font-medium">Not registered yet</span>}
-                          </p>
-                          <p className="text-[10px] text-slate-400 truncate flex items-center gap-1">
-                            <Mail className="w-2.5 h-2.5 shrink-0" />{f.email}
-                          </p>
-                        </div>
-                        <Badge color={f.isActive ? 'green' : 'amber'}>{f.isActive ? 'Active' : 'Pending'}</Badge>
-                      </div>
-
-                      {/* Details grid */}
-                      <div className="grid grid-cols-2 gap-2 text-[11px]">
-                        <div className="bg-slate-50 rounded-xl px-3 py-2">
-                          <p className="text-slate-400 font-bold uppercase text-[9px]">Department</p>
-                          <p className="font-extrabold text-slate-700 truncate">{f.department || '—'}</p>
-                        </div>
-                        <div className="bg-slate-50 rounded-xl px-3 py-2">
-                          <p className="text-slate-400 font-bold uppercase text-[9px]">Subject</p>
-                          <p className="font-extrabold text-slate-700 truncate">{subjectDisplayName}</p>
-                          {f.subjectCode && <p className="text-[9px] text-indigo-500 font-bold mt-0.5">{f.subjectCode}</p>}
-                        </div>
-                        <div className="bg-slate-50 rounded-xl px-3 py-2">
-                          <p className="text-slate-400 font-bold uppercase text-[9px]">Lab Room</p>
-                          <p className="font-extrabold text-slate-700 truncate">{f.labName || '—'}</p>
-                        </div>
-                        <div 
-                          onClick={() => {
-                            if (sectionNameDisplay && sectionNameDisplay !== 'Unassigned') {
-                              const firstSec = sectionNameDisplay.split(',')[0].trim();
-                              setSelectedSectionFilter(firstSec);
-                              setTab('student');
+                        const studentCount = students.filter((s: any) => {
+                          if (s.facultyId === facId || (facEmail && (s.facultyId?.toLowerCase() === facEmail || s.facultyEmail?.toLowerCase() === facEmail))) return true;
+                          if (f.sectionId && (s.sectionId === f.sectionId || s.section === f.sectionId)) return true;
+                          if (Array.isArray(f.assignedSectionIds) && (f.assignedSectionIds.includes(s.sectionId) || f.assignedSectionIds.includes(s.section))) return true;
+                          if (facSections.length > 0) {
+                            const sSec = String(s.section || '').toLowerCase();
+                            const sSecId = String(s.sectionId || '').toLowerCase();
+                            if (facSections.some(sec => sec === sSec || sec === sSecId || sSec.endsWith(sec) || sec.endsWith(sSec))) {
+                              return true;
                             }
-                          }}
-                          className={`bg-slate-50 rounded-xl px-3 py-2 ${
-                            sectionNameDisplay !== 'Unassigned' ? 'cursor-pointer hover:bg-indigo-50 hover:border-indigo-200 border border-transparent transition' : ''
-                          }`}
-                          title={sectionNameDisplay !== 'Unassigned' ? "Click to view section students in Student Monitoring" : ""}
-                        >
-                          <p className="text-slate-400 font-bold uppercase text-[9px] flex items-center justify-between">
-                            <span>Assigned Section</span>
-                            {sectionNameDisplay !== 'Unassigned' && <span className="text-[8px] text-indigo-600 font-black">VIEW →</span>}
-                          </p>
-                          <p className="font-extrabold text-slate-700 truncate">{sectionNameDisplay}</p>
-                        </div>
-                      </div>
+                          }
+                          return false;
+                        }).length;
 
-                      {/* Footer */}
-                      <div className="flex items-center justify-between pt-1 border-t border-slate-50">
-                        <button
-                          onClick={() => {
-                            if (sectionNameDisplay && sectionNameDisplay !== 'Unassigned') {
-                              const firstSec = sectionNameDisplay.split(',')[0].trim();
-                              setSelectedSectionFilter(firstSec);
-                            }
-                            setTab('student');
-                          }}
-                          className="flex items-center gap-1.5 hover:text-indigo-600 transition cursor-pointer text-left"
-                          title="Click to monitor these students"
-                        >
-                          <Users className="w-3.5 h-3.5 text-indigo-400" />
-                          <span className="text-xs font-bold text-slate-600 hover:text-indigo-600 transition">{studentCount} student{studentCount !== 1 ? 's' : ''}</span>
-                        </button>
-                        {batchName && (
-                          <span className="text-[10px] text-slate-400 font-semibold truncate max-w-[120px]">
-                            {batchName}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                        return (
+                          <tr key={f.id} className="hover:bg-slate-50/70 transition-colors">
+                            <td className="px-4 py-3.5 text-center font-bold text-slate-400">{idx + 1}</td>
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-xs shrink-0 shadow-2xs">
+                                  {(f.name || f.email || 'F').charAt(0).toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="font-extrabold text-slate-900 text-xs">
+                                    {f.name || <span className="italic text-slate-400 font-medium">Not registered yet</span>}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 font-medium truncate">{f.email}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3.5 font-bold text-slate-800">{f.department || '—'}</td>
+                            <td className="px-4 py-3.5">
+                              <div className="font-bold text-slate-800">{subjectDisplayName}</div>
+                              {f.subjectCode && <div className="text-[9px] text-indigo-600 font-mono font-bold">{f.subjectCode}</div>}
+                            </td>
+                            <td className="px-4 py-3.5 font-bold text-slate-700">{f.labName || '—'}</td>
+                            <td className="px-4 py-3.5 text-center">
+                              <span 
+                                onClick={() => {
+                                  if (sectionNameDisplay && sectionNameDisplay !== 'Unassigned') {
+                                    const firstSec = sectionNameDisplay.split(',')[0].trim();
+                                    setSelectedSectionFilter(firstSec);
+                                    setTab('student');
+                                  }
+                                }}
+                                className={`inline-block px-2.5 py-1 rounded-lg text-[11px] font-black border transition ${
+                                  sectionNameDisplay !== 'Unassigned'
+                                    ? 'bg-indigo-50 text-indigo-700 border-indigo-200 cursor-pointer hover:bg-indigo-100'
+                                    : 'bg-slate-100 text-slate-400 border-slate-200'
+                                }`}
+                              >
+                                {sectionNameDisplay}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5 text-center">
+                              <button
+                                onClick={() => {
+                                  if (sectionNameDisplay && sectionNameDisplay !== 'Unassigned') {
+                                    const firstSec = sectionNameDisplay.split(',')[0].trim();
+                                    setSelectedSectionFilter(firstSec);
+                                  }
+                                  setTab('student');
+                                }}
+                                className="font-black text-slate-800 hover:text-indigo-600 transition cursor-pointer text-xs"
+                              >
+                                {studentCount}
+                              </button>
+                            </td>
+                            <td className="px-4 py-3.5 text-center">
+                              <Badge color={f.isActive ? 'green' : 'amber'}>{f.isActive ? 'Active' : 'Pending'}</Badge>
+                            </td>
+                            <td className="px-4 py-3.5 text-center">
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  onClick={() => exportFacultyObservationMarksExcel(f, students)}
+                                  className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-black flex items-center gap-1 cursor-pointer transition border border-emerald-200/60 shadow-xs"
+                                  title="Export Observation Marks (.xlsx)"
+                                >
+                                  <Download className="w-3 h-3 text-emerald-600" />
+                                  <span>Export</span>
+                                </button>
+                                <button
+                                  onClick={() => setMonitoringModal(f)}
+                                  className="px-2.5 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 text-[10px] font-black flex items-center gap-1 cursor-pointer transition border border-purple-200/60 shadow-xs"
+                                  title="Faculty Live Monitoring Log"
+                                >
+                                  <Activity className="w-3 h-3 text-purple-600" />
+                                  <span>Monitoring</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
@@ -2352,7 +2873,7 @@ export default function AdminDashboard() {
               onFacultiesChange={_ => refreshData()}
             />
           )}
-          {activeTab === 'monitor'   && <MonitoringTab faculties={faculties} students={students} sections={sections} batches={batches} onRefresh={async () => { await refreshData(); await loadBatchesAndSections(); }} />}
+          {activeTab === 'monitor'   && <MonitoringTab faculties={faculties} students={students} sections={sections} batches={batches} token={token} onRefresh={async () => { await refreshData(); await loadBatchesAndSections(); }} />}
           {activeTab === 'notify'    && <NotificationsTab batches={batches} token={token} />}
         </>
       )}

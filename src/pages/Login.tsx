@@ -47,7 +47,7 @@ export default function Login() {
       const res = await login(email.trim(), password);
       if (res.success && res.user) {
         let targetPath = '/faculty/dashboard';
-        if (res.user.role === 'Admin') {
+        if (res.user.role === 'Admin' || res.user.role === 'HOD') {
           targetPath = '/admin/dashboard';
         } else if (res.user.role === 'Student') {
           targetPath = '/student/dashboard';

@@ -157,8 +157,8 @@ async function getAllStudents() {
             const idx = student.attendanceHistory.findIndex((h: any) =>
               h.date === rec.date &&
               ((h.facultyId && rec.facultyId && h.facultyId === rec.facultyId) ||
-               (h.subjectCode && rec.subjectCode && h.subjectCode === rec.subjectCode) ||
-               (!h.facultyId && !h.subjectCode))
+               (h.facultyEmail && rec.facultyEmail && h.facultyEmail.toLowerCase() === rec.facultyEmail.toLowerCase()) ||
+               (h.subjectCode && rec.subjectCode && h.subjectCode === rec.subjectCode))
             );
             const entry = {
               date: rec.date,
@@ -1450,8 +1450,8 @@ async function startServer() {
       student.attendance = risk.attendance;
       student.riskFlagged = risk.riskFlagged;
       student.riskReason = risk.riskReason;
-      student.markModified("attendanceHistory");
-      await student.save();
+      if (typeof student.markModified === "function") student.markModified("attendanceHistory");
+      if (typeof student.save === "function") await student.save();
 
       // Emit targeted socket events
       const targetRooms = [`faculty:${facultyId}`, `student:${studentId}`];
@@ -1526,8 +1526,8 @@ async function startServer() {
         student.attendance = risk.attendance;
         student.riskFlagged = risk.riskFlagged;
         student.riskReason = risk.riskReason;
-        student.markModified("attendanceHistory");
-        await student.save();
+        if (typeof student.markModified === "function") student.markModified("attendanceHistory");
+        if (typeof student.save === "function") await student.save();
       }
 
       broadcastRealtimeEvent({ type: "ACADEMIC_DATA_UPDATED", action: "attendance" });
@@ -1559,8 +1559,8 @@ async function startServer() {
         student.experiments[idx].recordPdfUrl = recordFile || student.experiments[idx].recordPdfUrl || "uploaded_record.pdf";
         student.experiments[idx].submittedAt = today;
       }
-      student.markModified("experiments");
-      await student.save();
+      if (typeof student.markModified === "function") student.markModified("experiments");
+      if (typeof student.save === "function") await student.save();
 
       res.json({ success: true, students: await getAllStudents() });
     } catch (err) {
@@ -1584,7 +1584,7 @@ async function startServer() {
         student.experiments[idx].status = status;
         student.experiments[idx].score = status === "Approved" ? Number(score) : 0;
         if (remarks !== undefined) student.experiments[idx].remarks = remarks;
-        student.markModified("experiments");
+        if (typeof student.markModified === "function") student.markModified("experiments");
       }
 
       const approved = student.experiments.filter((e: any) => e.status === "Approved").length;
@@ -1639,7 +1639,7 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
       const legacyAsgId = `asg-${experimentIndex}`;
       const today = new Date().toISOString().split("T")[0];
 
-      const student: any = await (StudentModel as any).findOne({ id: studentId });
+      const student: any = await (StudentModel as any).findOne({ id: studentId }).lean();
       if (!student) return res.status(404).json({ error: "Student not found" });
 
       if (action === "observation_only" || action === "both") {
@@ -1676,7 +1676,7 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
             recordPdfUrl: "uploaded_record.pdf"
           });
         }
-        student.markModified("experiments");
+        if (typeof student.markModified === "function") student.markModified("experiments");
       }
 
       if (action === "both" || action === "record_only") {
@@ -1713,7 +1713,7 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
             fileUrl: "uploaded_record.pdf"
           });
         }
-        student.markModified("assignments");
+        if (typeof student.markModified === "function") student.markModified("assignments");
       }
 
       const approved = student.experiments.filter((e: any) => e.status === "Approved").length;
@@ -1725,12 +1725,39 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
             : `Lab completion (${labRate}%) below criteria.`)
         : undefined;
 
-      await student.save();
+      await saveStudentDirect(student);
       res.json({ success: true, students: await getAllStudents() });
     } catch (err) {
       res.status(500).json({ error: "Failed to direct evaluate" });
     }
   });
+
+  // Direct MongoDB Atomic Save Helper (bypasses in-memory Mongoose schema cast errors for string marks)
+  async function saveStudentDirect(student: any) {
+    try {
+      await (StudentModel as any).updateOne(
+        { id: student.id },
+        {
+          $set: {
+            attendance: student.attendance,
+            subjectAttendance: student.subjectAttendance,
+            attendanceHistory: student.attendanceHistory,
+            experiments: student.experiments,
+            assignments: student.assignments,
+            internalMarks: student.internalMarks,
+            riskFlagged: student.riskFlagged,
+            riskReason: student.riskReason,
+            updatedAt: new Date()
+          }
+        }
+      );
+    } catch (err) {
+      console.error("saveStudentDirect error:", err);
+      if (typeof student.save === "function") {
+        await student.save();
+      }
+    }
+  }
 
   // ===========================================================================
   // ACADEMIC: UPDATE SIGNOFF & MARKS
@@ -1757,7 +1784,7 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
       const legacyAsgId = `asg-${experimentIndex}`;
       const today = new Date().toISOString().split("T")[0];
 
-      const student: any = await (StudentModel as any).findOne({ id: studentId });
+      const student: any = await (StudentModel as any).findOne({ id: studentId }).lean();
       if (!student) return res.status(404).json({ error: "Student not found" });
 
       // 1. Update Observation
@@ -1773,32 +1800,65 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
         else if (observationStatus === "absent") status = "Absent";
         else if (observationStatus === "od") status = "On Duty";
 
-        const score = observationMarks !== undefined && observationMarks !== ""
-          ? (isNaN(Number(observationMarks)) ? observationMarks : Number(observationMarks))
-          : 0;
+        const now = new Date();
+        const formattedTime12 = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        const currentHour = now.getHours();
+        const currentMin = now.getMinutes();
+        const totalMinutes = currentHour * 60 + currentMin;
+
+        // College timing cutoff is 3:30 PM (15:30 -> 15*60 + 30 = 930 minutes)
+        // Or before 8:00 AM (8*60 = 480 minutes)
+        const isHasFMark = typeof observationMarks === 'string' && (observationMarks.toUpperCase().startsWith('F/') || observationMarks.toUpperCase().startsWith('F-'));
+        const isAfter330PM = totalMinutes > 930 || totalMinutes < 480 || isHasFMark;
+        const isLateFacultySubmission = isAfter330PM;
+        const facultySubmissionTimingStatus = isLateFacultySubmission ? "Late Submission (After 3:30 PM)" : "On-Time (8:00 AM - 3:30 PM)";
+
+        let score: any = "";
+        if (observationMarks !== undefined && observationMarks !== "") {
+          score = isNaN(Number(observationMarks)) ? observationMarks : Number(observationMarks);
+        } else if (observationStatus === "absent") {
+          score = "A";
+        } else if (observationStatus === "od") {
+          score = "OD";
+        } else if (observationStatus === "tick") {
+          score = isAfter330PM ? "F/10" : 10;
+        }
 
         if (expIdx >= 0) {
           student.experiments[expIdx].id = expId;
           student.experiments[expIdx].subjectCode = activeSubjectCode;
           student.experiments[expIdx].subjectName = activeSubjectName;
+          student.experiments[expIdx].facultyId = facultyId;
+          student.experiments[expIdx].signedOffBy = facultyId;
           if (observationStatus !== undefined) student.experiments[expIdx].status = status;
-          if (observationMarks !== undefined) student.experiments[expIdx].score = score;
+          if (observationMarks !== undefined || observationStatus !== undefined) {
+            student.experiments[expIdx].score = score;
+          }
           student.experiments[expIdx].submittedAt = student.experiments[expIdx].submittedAt || today;
+          student.experiments[expIdx].submittedAtTime = formattedTime12;
+          student.experiments[expIdx].isLateFacultySubmission = isLateFacultySubmission;
+          student.experiments[expIdx].facultySubmissionTimingStatus = facultySubmissionTimingStatus;
         } else {
           student.experiments.push({
             id: expId,
             subjectCode: activeSubjectCode,
             subjectName: activeSubjectName,
             name: `Experiment ${experimentIndex}`,
+            experimentNumber: experimentIndex,
             dueDate: today,
             status,
             score,
             maxScore: 10,
             submittedAt: today,
+            submittedAtTime: formattedTime12,
+            isLateFacultySubmission,
+            facultySubmissionTimingStatus,
+            facultyId,
+            signedOffBy: facultyId,
             remarks: "Observation Evaluated"
           });
         }
-        student.markModified("experiments");
+        if (typeof student.markModified === "function") student.markModified("experiments");
       }
 
       // 2. Update Record
@@ -1833,7 +1893,7 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
             remarks: "Record Evaluated"
           });
         }
-        student.markModified("assignments");
+        if (typeof student.markModified === "function") student.markModified("assignments");
       }
 
       // 3. Recalculate Risk
@@ -1846,7 +1906,7 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
             : `Lab completion (${labRate}%) below criteria.`)
         : undefined;
 
-      await student.save();
+      await saveStudentDirect(student);
 
       // Upsert into LabExperiment collection — filter by facultyId+studentId+subjectCode+experimentNumber for per-faculty isolation
       await (LabExperimentModel as any).findOneAndUpdate(
@@ -1859,8 +1919,8 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
             subjectName: activeSubjectName,
             experimentNumber: experimentIndex,
             name: `Experiment ${experimentIndex}`,
-            status: observationStatus === "tick" ? "Approved" : (observationStatus === "cross" ? "Rejected" : "Not Submitted"),
-            score: observationMarks !== undefined && observationMarks !== "" ? Number(observationMarks) : 0,
+            status: observationStatus === "tick" ? "Approved" : (observationStatus === "cross" ? "Rejected" : (observationStatus === "absent" ? "Absent" : (observationStatus === "od" ? "On Duty" : "Not Submitted"))),
+            score: observationMarks !== undefined && observationMarks !== "" ? (isNaN(Number(observationMarks)) ? observationMarks : Number(observationMarks)) : (observationStatus === "absent" ? "A" : (observationStatus === "od" ? "OD" : 0)),
             observationSignoff: observationStatus || "none",
             recordSignoff: recordStatus || "none",
             signedOffAt: today,
@@ -1888,6 +1948,108 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
   });
 
   // ===========================================================================
+  // ADMIN / HOD: FACULTY LIVE MONITORING & COMPLIANCE
+  // ===========================================================================
+  app.get("/api/admin/faculty/:facultyId/monitoring", authMiddleware, requireRole("Admin", "HOD"), async (req: Request, res: Response) => {
+    try {
+      const { facultyId } = req.params;
+      const targetFac: any = await (FacultyModel as any).findOne({
+        $or: [{ id: facultyId }, { email: facultyId.toLowerCase() }]
+      }).lean();
+
+      if (!targetFac) {
+        return res.status(404).json({ error: "Faculty member not found" });
+      }
+
+      const facEmail = (targetFac.email || "").toLowerCase();
+      const facIdStr = (targetFac.id || "").toLowerCase();
+
+      // Fetch all students
+      const allStudents: any[] = await (StudentModel as any).find({}).lean();
+
+      let totalEvaluations = 0;
+      let onTimeCount = 0;
+      let lateCount = 0;
+      const lateLogs: any[] = [];
+      const allLogs: any[] = [];
+
+      allStudents.forEach((st: any) => {
+        (st.experiments || []).forEach((exp: any) => {
+          const facMatches =
+            (exp.signedOffBy && (exp.signedOffBy.toLowerCase() === facIdStr || exp.signedOffBy.toLowerCase() === facEmail)) ||
+            (exp.facultyId && (exp.facultyId.toLowerCase() === facIdStr || exp.facultyId.toLowerCase() === facEmail)) ||
+            (targetFac.subjectCode && exp.subjectCode && exp.subjectCode.toLowerCase() === targetFac.subjectCode.toLowerCase());
+
+          if (facMatches && (exp.status === 'Approved' || exp.status === 'Absent' || (exp.score !== undefined && exp.score !== 0))) {
+            totalEvaluations++;
+
+            const isLate = exp.isLateFacultySubmission === true;
+            if (isLate) {
+              lateCount++;
+              lateLogs.push({
+                studentId: st.id,
+                studentName: st.name,
+                rollNo: st.rollNo,
+                registerNo: st.registerNo || '-',
+                section: st.section || targetFac.sectionsHandled?.[0] || 'A',
+                experimentName: exp.name || `Experiment ${exp.experimentNumber || 1}`,
+                subjectCode: exp.subjectCode || targetFac.subjectCode || '-',
+                subjectName: exp.subjectName || targetFac.subjectName || '-',
+                date: exp.submittedAt || getLocalDateString(),
+                submittedAtTime: exp.submittedAtTime || 'After 3:30 PM',
+                score: exp.score !== undefined ? exp.score : '-',
+                status: exp.status || 'Approved',
+                timingStatus: exp.facultySubmissionTimingStatus || 'Late Submission (After 3:30 PM)'
+              });
+            } else {
+              onTimeCount++;
+            }
+
+            allLogs.push({
+              studentId: st.id,
+              studentName: st.name,
+              rollNo: st.rollNo,
+              experimentName: exp.name || `Experiment ${exp.experimentNumber || 1}`,
+              date: exp.submittedAt || getLocalDateString(),
+              submittedAtTime: exp.submittedAtTime || 'During Class (8:00 AM - 3:30 PM)',
+              score: exp.score !== undefined ? exp.score : '-',
+              isLate
+            });
+          }
+        });
+      });
+
+      const complianceRate = totalEvaluations > 0 ? Math.round((onTimeCount / totalEvaluations) * 100) : 100;
+
+      res.json({
+        faculty: {
+          id: targetFac.id,
+          name: targetFac.name,
+          email: targetFac.email,
+          department: targetFac.department,
+          labName: targetFac.labName,
+          subjectCode: targetFac.subjectCode,
+          subjectName: targetFac.subjectName,
+          sectionId: targetFac.sectionId,
+          batchId: targetFac.batchId
+        },
+        summary: {
+          totalEvaluations,
+          onTimeCount,
+          lateCount,
+          complianceRate,
+          collegeHours: "8:00 AM – 3:30 PM"
+        },
+        lateLogs,
+        allLogs: allLogs.slice(0, 50)
+      });
+    } catch (err: any) {
+      console.error("Error in faculty monitoring:", err);
+      res.status(500).json({ error: err.message || "Failed to fetch faculty monitoring data" });
+    }
+  });
+
+  // ===========================================================================
   // ACADEMIC: SUBMIT ASSIGNMENT
   // ===========================================================================
   app.post("/api/academic/assignment/submit", authMiddleware, async (req, res) => {
@@ -1903,9 +2065,9 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
         student.assignments[idx].status = "Submitted";
         student.assignments[idx].fileUrl = filename;
         student.assignments[idx].submittedAt = new Date().toISOString().split("T")[0];
-        student.markModified("assignments");
+        if (typeof student.markModified === "function") student.markModified("assignments");
       }
-      await student.save();
+      if (typeof student.save === "function") await student.save();
       res.json({ success: true, students: await getAllStudents() });
     } catch (err) {
       res.status(500).json({ error: "Failed to submit assignment" });
@@ -1928,9 +2090,9 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
         student.assignments[idx].status = "Graded";
         student.assignments[idx].score = Number(score);
         student.assignments[idx].remarks = remarks || "";
-        student.markModified("assignments");
+        if (typeof student.markModified === "function") student.markModified("assignments");
       }
-      await student.save();
+      if (typeof student.save === "function") await student.save();
 
       emitSocketEvent("assignment:graded", { studentId, assignmentId, score, remarks }, [`student:${studentId}`, `faculty:${req.user?.id}`]);
       broadcastRealtimeEvent({ type: "ACADEMIC_DATA_UPDATED", action: "assignment_graded" });

@@ -34,7 +34,9 @@ import {
   FileCheck,
   ChevronDown,
   Calendar,
-  Edit3
+  CalendarDays,
+  Edit3,
+  Sparkles
 } from 'lucide-react';
 import { Bell } from 'lucide-react';
 
@@ -61,11 +63,15 @@ function getLocalDateString(d: Date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
+function formatRollNo(rollNo: string | undefined | null): string {
+  if (!rollNo) return '-';
+  return String(rollNo).replace(/\s+/g, '').toUpperCase();
+}
+
 export default function FacultyDashboard() {
   const { user, updateProfilePic } = useAuth();
   const { students, getFacultyData, getFacultyStudents, updateStudentAttendance, updateBatchStudentAttendance, updateSignoff, refreshData } = useAcademicData();
   const { tab } = useParams<{ tab?: string }>();
-  const today = getLocalDateString();
 
   // Selected Section State (Default: empty, synced dynamically)
   const [selectedSection, setSelectedSection] = useState<string>('');
@@ -91,11 +97,14 @@ export default function FacultyDashboard() {
       setActivePage(2);
     } else if (tab === 'page3') {
       setActivePage(3);
+    } else if (tab === 'reports' || tab === 'page5') {
+      setActivePage(5);
+      setShowProfileModal(false);
     } else if (tab === 'page4') {
       setActivePage(4);
       setShowProfileModal(false);
     } else if (tab === 'profile') {
-      setActivePage(5);
+      setActivePage(6);
       setShowProfileModal(false);
     }
   }, [tab]);
@@ -111,6 +120,19 @@ export default function FacultyDashboard() {
     setSessionsCompleted(safeVal);
     localStorage.setItem(`faculty_sessions_completed_${user.id}`, safeVal.toString());
   };
+
+  const [focusedCell, setFocusedCell] = useState<string | null>(null);
+  const [showExpBreakdownModal, setShowExpBreakdownModal] = useState(false);
+  const [showTodayExpModal, setShowTodayExpModal] = useState(false);
+  const [showMyTimetableModal, setShowMyTimetableModal] = useState(false);
+  const [hasPromptedExpModal, setHasPromptedExpModal] = useState(false);
+
+  useEffect(() => {
+    if (activePage === 3 && !hasPromptedExpModal) {
+      setShowTodayExpModal(true);
+      setHasPromptedExpModal(true);
+    }
+  }, [activePage, hasPromptedExpModal]);
 
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -150,6 +172,14 @@ export default function FacultyDashboard() {
   // Page 3 Toggling Mode (Observation or Record)
   const [notebookMode, setNotebookMode] = useState<'observation' | 'record'>('observation');
 
+  // Local state for Selected Session Date (Defaults to Today's date)
+  const [selectedDate, setSelectedDate] = useState<string>(() => getLocalDateString());
+
+  // Local state for Day-by-Day Reports
+  const [reportDate, setReportDate] = useState<string>(() => getLocalDateString());
+  const [reportViewTab, setReportViewTab] = useState<'attendance' | 'evaluations'>('attendance');
+  const [reportSearchQuery, setReportSearchQuery] = useState<string>('');
+
   // Local state for Today's Attendance (Saves marked attendance for currently filtered students)
   const [attendanceState, setAttendanceState] = useState<{ [studentId: string]: 'Present' | 'Absent' | 'On Duty' }>({});
   const [isAttendanceDirty, setIsAttendanceDirty] = useState(false);
@@ -178,6 +208,7 @@ export default function FacultyDashboard() {
   const phoneNo = facultyData.phone || (user.id === "F01" ? "+91 94451 98721" : user.id === "F02" ? "+91 98404 12345" : "+91 91500 54321");
   const subjectName = facultyData.subjectName || facultyData.subjectsHandled?.[0] || "General Lab";
   const subjectCode = facultyData.subjectCode || "";
+  const today = selectedDate;
 
   // Helper for consistent subject key construction (prefix faculty identity for strict multi-faculty isolation)
   const codeClean = (subjectCode || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "_");
@@ -253,7 +284,7 @@ export default function FacultyDashboard() {
             return true;
           });
           if (!myRecord && dateRecords.length > 0) {
-            myRecord = dateRecords.find((h: any) => !h.facultyId && !h.facultyEmail) || dateRecords[dateRecords.length - 1];
+            myRecord = dateRecords.find((h: any) => !h.facultyId && !h.facultyEmail);
           }
 
           // If this faculty has a saved record in DB, restore it. Otherwise default to Present (0 absentees).
@@ -279,19 +310,57 @@ export default function FacultyDashboard() {
             return facultyMatches && subjectMatches && (a.experimentNumber === i || a.id?.endsWith(`-${i}`));
           });
 
+          const isAbsentToday = newAttendance[student.id] === 'Absent';
+
+          let defaultObsStatus: 'none' | 'tick' | 'cross' = 'none';
+          let defaultMarks = '';
+
+          if (exp) {
+            defaultObsStatus = exp.status === 'Approved' ? 'tick' : (exp.status === 'Rejected' || exp.status === 'Absent' ? 'cross' : 'none');
+            defaultMarks = exp.score !== undefined && exp.score !== null && exp.score !== ''
+              ? exp.score.toString()
+              : (exp.status === 'Approved' ? '10' : (exp.status === 'Absent' || exp.score === 'A' ? 'A' : ''));
+          } else if (isAbsentToday && i === Math.min(12, Math.max(1, sessionsCompleted))) {
+            defaultObsStatus = 'cross';
+            defaultMarks = 'A';
+          }
+
           newSignoffs[student.id][i] = {
-            observation: exp ? (exp.status === 'Approved' ? 'tick' : (exp.status === 'Rejected' ? 'cross' : 'none')) : 'none',
-            observationMarks: exp ? (exp.score !== undefined && exp.score > 0 ? exp.score.toString() : (exp.status === 'Approved' ? '10' : '')) : '',
+            observation: defaultObsStatus,
+            observationMarks: defaultMarks,
             record: asg ? (asg.status === 'Rejected' ? 'cross' : (asg.status === 'Unsigned' || asg.status === 'none' ? 'none' : 'tick')) : 'none'
           };
         }
       });
 
       setAttendanceState(newAttendance);
-      setSignoffState(newSignoffs);
+      setSignoffState(prev => {
+        if (!prev || Object.keys(prev).length === 0) return newSignoffs;
+
+        const merged = { ...newSignoffs };
+        for (const stId of Object.keys(prev)) {
+          if (merged[stId]) {
+            merged[stId] = { ...merged[stId] };
+            for (const expK of Object.keys(prev[stId])) {
+              const expIdx = Number(expK);
+              const prevCell = prev[stId][expIdx];
+              const isCurrentlyFocused = focusedCell === `${stId}-${expIdx}`;
+
+              if (prevCell && (isCurrentlyFocused || (prevCell.observationMarks !== undefined && prevCell.observationMarks !== ''))) {
+                merged[stId][expIdx] = {
+                  ...merged[stId][expIdx],
+                  observationMarks: prevCell.observationMarks,
+                  observation: prevCell.observation
+                };
+              }
+            }
+          }
+        }
+        return merged;
+      });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSection, students, subjectKey, user.id, user.email]);
+  }, [selectedSection, students, subjectKey, selectedDate, user.id, user.email]);
 
   // Live Statistics Calculations for Page 1
   const totalStudents = sectionStudents.length;
@@ -300,19 +369,193 @@ export default function FacultyDashboard() {
   const odCount = sectionStudents.filter(s => attendanceState[s.id] === 'On Duty').length;
   const attendancePercentage = totalStudents > 0 ? Math.round(((presentCount + odCount) / totalStudents) * 100) : 0;
 
-  // Signed Student Counts for Selected Section (Counts how many students got signature)
-  const studentsWithObservationSigned = sectionStudents.filter(student => {
-    return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].some(expIdx => {
-      const state = signoffState[student.id]?.[expIdx];
-      return state?.observation === 'tick' || (state?.observationMarks !== undefined && state?.observationMarks !== '' && state?.observationMarks !== null);
-    });
+  // Active Experiment Index (based on Sessions Completed)
+  const currentActiveExpIdx = Math.min(12, Math.max(1, sessionsCompleted));
+
+  // Signed Student Counts for Current Active Session / Experiment
+  const studentsWithObservationSignedActive = sectionStudents.filter(student => {
+    const cell = signoffState[student.id]?.[currentActiveExpIdx];
+    return cell?.observation === 'tick' || (cell?.observationMarks !== undefined && cell?.observationMarks !== '' && cell?.observationMarks !== null);
   }).length;
 
-  const studentsWithRecordSigned = sectionStudents.filter(student => {
-    return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].some(expIdx => {
-      return signoffState[student.id]?.[expIdx]?.record === 'tick';
-    });
+  const studentsWithRecordSignedActive = sectionStudents.filter(student => {
+    return signoffState[student.id]?.[currentActiveExpIdx]?.record === 'tick';
   }).length;
+
+  // Experiment-wise Detailed Signoff Breakdown for all 12 Experiments
+  const experimentSignoffBreakdown = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(expIdx => {
+    const obsSigned = sectionStudents.filter(student => {
+      const cell = signoffState[student.id]?.[expIdx];
+      return cell?.observation === 'tick' || (cell?.observationMarks !== undefined && cell?.observationMarks !== '' && cell?.observationMarks !== null);
+    }).length;
+
+    const recSigned = sectionStudents.filter(student => {
+      return signoffState[student.id]?.[expIdx]?.record === 'tick';
+    }).length;
+
+    return {
+      expIdx,
+      name: LAB_EXERCISES[expIdx - 1]?.name || `Experiment ${expIdx}`,
+      obsSigned,
+      recSigned,
+      total: totalStudents,
+      isCurrent: expIdx === currentActiveExpIdx,
+      isAllObsSigned: totalStudents > 0 && obsSigned === totalStudents,
+      isAllRecSigned: totalStudents > 0 && recSigned === totalStudents,
+    };
+  });
+
+  // Day-by-Day Report Calculation for reportDate
+  const facEmail = (user.email || "").toLowerCase();
+  const facId = (user.id || "").toLowerCase();
+  const dbFacData = getFacultyData(user.email || user.id);
+  const dbFacEmail = (dbFacData?.email || "").toLowerCase();
+  const dbFacId = (dbFacData?.id || "").toLowerCase();
+
+  // Generate Unique Daily Report Reference ID
+  const cleanReportDate = reportDate.replace(/-/g, '');
+  const uniqueReportRef = `DAR-${cleanReportDate}-${(selectedSection || 'SEC').toUpperCase()}-${(subjectCode || 'SUBJ').toUpperCase()}`;
+
+  const dailyAttendanceListRaw = sectionStudents.map(student => {
+    const dateRecords = (student.attendanceHistory || []).filter((h: any) => h.date === reportDate);
+    const myRecord = dateRecords.find((h: any) => {
+      const facultyMatches =
+        (h.facultyEmail && facEmail && h.facultyEmail.toLowerCase() === facEmail) ||
+        (h.facultyEmail && dbFacEmail && h.facultyEmail.toLowerCase() === dbFacEmail) ||
+        (h.facultyId && facId && h.facultyId.toLowerCase() === facId) ||
+        (h.facultyId && dbFacId && h.facultyId.toLowerCase() === dbFacId);
+      if (!facultyMatches) return false;
+      if (subjectCode && h.subjectCode && h.subjectCode.toLowerCase() !== subjectCode.toLowerCase()) return false;
+      return true;
+    });
+
+    // Check Observation & Record signoffs strictly matching THIS Faculty member and THIS Subject for reportDate
+    const obsEvaluatedOnDateRaw = (student.experiments || []).filter((e: any) => {
+      const dateMatches = e.submittedAt === reportDate || (e.dueDate === reportDate && (e.status === 'Approved' || e.status === 'Absent' || (e.score !== undefined && e.score !== 0)));
+      if (!dateMatches) return false;
+
+      // Faculty match (strict): must be signed off by or created for this faculty member
+      const eFac = (e.signedOffBy || e.facultyId || '').toLowerCase();
+      const eId = (e.id || '').toLowerCase();
+      const matchesFacultyIdentity =
+        (eFac && (eFac === facId || eFac === facEmail || eFac === dbFacId || eFac === dbFacEmail)) ||
+        (!eFac && (eId.includes(fidClean) || (subjectKey && eId.includes(subjectKey))));
+      if (!matchesFacultyIdentity) return false;
+
+      // Subject filter (strict)
+      if (subjectCode && e.subjectCode && e.subjectCode.toLowerCase() !== subjectCode.toLowerCase()) return false;
+      if (subjectName && e.subjectName && e.subjectName.toLowerCase() !== subjectName.toLowerCase()) return false;
+
+      return e.status === 'Approved' || e.status === 'Absent' || e.status === 'On Duty' || (e.score !== undefined && e.score !== null && e.score !== 0 && e.score !== '');
+    });
+
+    // Deduplicate observation records by experimentNumber so Exp 1 appears only ONCE
+    const uniqueObsOnDateMap = new Map<number, any>();
+    obsEvaluatedOnDateRaw.forEach((e: any) => {
+      const expNum = e.experimentNumber || Number(e.id?.split('-').pop()) || 1;
+      if (!uniqueObsOnDateMap.has(expNum)) {
+        uniqueObsOnDateMap.set(expNum, e);
+      }
+    });
+
+    const uniqueObsList = Array.from(uniqueObsOnDateMap.values());
+
+    const recEvaluatedOnDateRaw = (student.assignments || []).filter((a: any) => {
+      const dateMatches = a.submittedAt === reportDate || (a.dueDate === reportDate && a.status === 'Graded');
+      if (!dateMatches) return false;
+
+      const aFac = (a.gradedBy || a.facultyId || '').toLowerCase();
+      const aId = (a.id || '').toLowerCase();
+      const matchesFacultyIdentity =
+        (aFac && (aFac === facId || aFac === facEmail || aFac === dbFacId || aFac === dbFacEmail)) ||
+        (!aFac && (aId.includes(fidClean) || (subjectKey && aId.includes(subjectKey))));
+      if (!matchesFacultyIdentity) return false;
+
+      if (subjectCode && a.subjectCode && a.subjectCode.toLowerCase() !== subjectCode.toLowerCase()) return false;
+      if (subjectName && a.subjectName && a.subjectName.toLowerCase() !== subjectName.toLowerCase()) return false;
+
+      return a.status === 'Graded' || a.status === 'Submitted';
+    });
+
+    const uniqueRecOnDateMap = new Map<number, any>();
+    recEvaluatedOnDateRaw.forEach((a: any) => {
+      const expNum = a.experimentNumber || Number(a.id?.split('-').pop()) || 1;
+      if (!uniqueRecOnDateMap.has(expNum)) {
+        uniqueRecOnDateMap.set(expNum, a);
+      }
+    });
+
+    const uniqueRecList = Array.from(uniqueRecOnDateMap.values());
+
+    const obsItems = uniqueObsList.map((e: any) => ({
+      expNum: e.experimentNumber || e.id?.split('-').pop() || 1,
+      score: e.score !== undefined && e.score !== null && e.score !== '' ? e.score : (e.status === 'Approved' ? '10' : e.status)
+    }));
+
+    const recItems = uniqueRecList.map((a: any) => ({
+      expNum: a.experimentNumber || a.id?.split('-').pop() || 1,
+      status: a.status === 'Graded' ? 'Signed' : a.status
+    }));
+
+    const obsStatusText = obsItems.length > 0 ? obsItems.map(i => `Exp ${i.expNum}: ${i.score}`).join(', ') : '-';
+    const recStatusText = recItems.length > 0 ? recItems.map(i => `Exp ${i.expNum}: ${i.status}`).join(', ') : '-';
+
+    return {
+      student,
+      rawStatus: myRecord ? (myRecord.status as string) : 'Present',
+      obsStatusText,
+      recStatusText,
+      obsItems,
+      recItems,
+      hasObs: uniqueObsList.length > 0,
+      hasRec: uniqueRecList.length > 0,
+      time: myRecord ? (myRecord.time || 'Class Hours') : 'N/A'
+    };
+  });
+
+  // Ensure 100% unique student entries in daily attendance list
+  const dailyAttendanceList: any[] = Array.from(
+    new Map<string, any>(dailyAttendanceListRaw.map(item => [item.student.id || item.student.rollNo || item.student.registerNo, item])).values()
+  );
+
+  const dailyPresentCount = dailyAttendanceList.filter(d => d.rawStatus === 'Present').length;
+  const dailyAbsentCount = dailyAttendanceList.filter(d => d.rawStatus === 'Absent').length;
+  const dailyODCount = dailyAttendanceList.filter(d => d.rawStatus === 'On Duty').length;
+  const dailyTotalCount = dailyAttendanceList.length;
+  const dailyAttendancePct = dailyTotalCount > 0 ? Math.round((dailyPresentCount / dailyTotalCount) * 100) : 0;
+
+  const filteredAttendanceList = dailyAttendanceList.filter(item => {
+    if (!reportSearchQuery.trim()) return true;
+    const q = reportSearchQuery.toLowerCase();
+    return item.student.name.toLowerCase().includes(q) || item.student.rollNo.toLowerCase().includes(q) || item.student.registerNo?.toLowerCase().includes(q);
+  });
+
+  // Day-by-Day Attendance Export Function with Unique Report Reference ID
+  const handleExportDayReport = () => {
+    const wb = XLSX.utils.book_new();
+
+    const attendanceRows = dailyAttendanceList.map((d, idx) => ({
+      "Report Ref ID": uniqueReportRef,
+      "S.No": idx + 1,
+      "Roll No": d.student.rollNo,
+      "Student Name": d.student.name,
+      "Register Number": d.student.registerNo || '-',
+      "Batch": d.student.batch || selectedBatch,
+      "Section": d.student.section || selectedSection,
+      "Subject": subjectName,
+      "Date": reportDate,
+      "Attendance Status": d.rawStatus,
+      "Observation Notebook Record": d.obsStatusText,
+      "Record Notebook Status": d.recStatusText
+    }));
+
+    const wsAttendance = XLSX.utils.json_to_sheet(attendanceRows.length > 0 ? attendanceRows : [
+      { "Note": `No students found for date ${reportDate} in section ${selectedSection}` }
+    ]);
+    XLSX.utils.book_append_sheet(wb, wsAttendance, "Daily Attendance & Lab Record");
+
+    XLSX.writeFile(wb, `Daily_Report_${selectedSection}_${reportDate}_${uniqueReportRef}.xlsx`);
+  };
 
   // Toggle present/absent/on duty today (Buffers changes locally until Confirm is clicked)
   const handleToggleAttendance = (studentId: string, status: 'Present' | 'Absent' | 'On Duty') => {
@@ -322,6 +565,40 @@ export default function FacultyDashboard() {
     }));
     setIsAttendanceDirty(true);
     setAttendanceSavedMessage(null);
+
+    // Auto sync Observation Marks based on Attendance status
+    const targetExpIdx = Math.min(12, Math.max(1, sessionsCompleted));
+    setSignoffState(prev => {
+      const studentState = prev[studentId] || {};
+      const currentExpState = studentState[targetExpIdx] || { observation: 'none', record: 'none' };
+      
+      let newMarks = currentExpState.observationMarks || '';
+      let newObsStatus: 'none' | 'tick' | 'cross' = currentExpState.observation;
+
+      if (status === 'Absent') {
+        newMarks = 'A';
+        newObsStatus = 'cross';
+      } else if (status === 'Present' && currentExpState.observationMarks === 'A') {
+        newMarks = '';
+        newObsStatus = 'none';
+      }
+
+      return {
+        ...prev,
+        [studentId]: {
+          ...studentState,
+          [targetExpIdx]: {
+            ...currentExpState,
+            observationMarks: newMarks,
+            observation: newObsStatus
+          }
+        }
+      };
+    });
+
+    if (status === 'Absent') {
+      updateSignoff(studentId, targetExpIdx, { observationStatus: 'absent', observationMarks: 'A', subjectCode, subjectName });
+    }
   };
 
   // Helper to mark all currently filtered section students as Present locally
@@ -419,15 +696,64 @@ export default function FacultyDashboard() {
     }
   };
 
-  const handleLocalMarksChange = (studentId: string, expIdx: number, value: string) => {
-    const trimmed = value.trim().toUpperCase();
-    let obsStatus: 'none' | 'tick' | 'cross' = 'none';
-    if (trimmed === 'A' || trimmed === 'ABSENT' || trimmed === 'X' || trimmed === 'CROSS' || trimmed === 'WRONG') {
-      obsStatus = 'cross';
-    } else if (trimmed === 'OD' || trimmed === 'ON DUTY' || trimmed !== '') {
-      obsStatus = 'tick';
+  const isAfterCollegeHours = () => {
+    const now = new Date();
+    const minutes = now.getHours() * 60 + now.getMinutes();
+    // College working hours: 8:00 AM (480 mins) to 3:30 PM (930 mins)
+    return minutes > 930 || minutes < 480;
+  };
+
+  const focusMarkInput = (stIdx: number, expIdx: number) => {
+    const el = document.getElementById(`mark-input-${stIdx}-${expIdx}`) as HTMLInputElement | null;
+    if (el) {
+      el.focus();
+      el.select();
+    }
+  };
+
+  const parseMarkInput = (value: string, isCurrentlyAbsent: boolean, isAfterHours: boolean) => {
+    let trimmed = value.trim().toUpperCase();
+    if (!trimmed || trimmed === '-') return { obsStatus: 'none' as const, finalMark: '' };
+    if (trimmed === 'P' || trimmed === 'PRESENT') return { obsStatus: 'tick' as const, finalMark: isAfterHours ? 'F/10' : '10' };
+    if (trimmed === 'A' || trimmed === 'ABSENT') return { obsStatus: 'absent' as const, finalMark: 'A' };
+    if (trimmed === 'OD' || trimmed === 'ON DUTY') return { obsStatus: 'od' as const, finalMark: 'OD' };
+    if (trimmed === 'X' || trimmed === 'CROSS' || trimmed === 'WRONG') return { obsStatus: 'cross' as const, finalMark: 'X' };
+
+    // Check F prefix variations: F/10, F10, F 10, F-10
+    const fMatch = trimmed.match(/^F[\/\s\-]?(\d+)$/);
+    if (fMatch) {
+      const num = Math.min(10, Math.max(0, Number(fMatch[1])));
+      return { obsStatus: 'tick' as const, finalMark: `F/${num}` };
     }
 
+    // Check A prefix variations: A/10, A10, A 10, A-10
+    const aMatch = trimmed.match(/^A[\/\s\-]?(\d+)$/);
+    if (aMatch) {
+      const num = Math.min(10, Math.max(0, Number(aMatch[1])));
+      return { obsStatus: 'tick' as const, finalMark: `A/${num}` };
+    }
+
+    // Check L prefix variations: L/10, L10, L 10, L-10
+    const lMatch = trimmed.match(/^L[\/\s\-]?(\d+)$/);
+    if (lMatch) {
+      const num = Math.min(10, Math.max(0, Number(lMatch[1])));
+      return { obsStatus: 'tick' as const, finalMark: `L/${num}` };
+    }
+
+    // Pure number input
+    const num = Number(trimmed);
+    if (!isNaN(num)) {
+      const clamped = Math.min(10, Math.max(0, num));
+      if (isCurrentlyAbsent) {
+        return { obsStatus: 'tick' as const, finalMark: `A/${clamped}` };
+      }
+      return { obsStatus: 'tick' as const, finalMark: isAfterHours ? `F/${clamped}` : `${clamped}` };
+    }
+
+    return null;
+  };
+
+  const handleLocalMarksChange = (studentId: string, expIdx: number, value: string) => {
     setSignoffState(prev => {
       const studentState = prev[studentId] || {};
       const expState = studentState[expIdx] || { observation: 'none', record: 'none' };
@@ -437,8 +763,7 @@ export default function FacultyDashboard() {
           ...studentState,
           [expIdx]: {
             ...expState,
-            observationMarks: value.toUpperCase(),
-            observation: obsStatus
+            observationMarks: value.toUpperCase()
           }
         }
       };
@@ -446,28 +771,22 @@ export default function FacultyDashboard() {
   };
 
   const handleSaveMarks = async (studentId: string, expIdx: number, value: string) => {
-    const trimmed = value.trim().toUpperCase();
-    let obsStatus: 'none' | 'tick' | 'cross' | 'absent' | 'od' = 'none';
-    let finalMark = trimmed;
+    const currentMark = signoffState[studentId]?.[expIdx]?.observationMarks || '';
+    const currentObsStatus = signoffState[studentId]?.[expIdx]?.observation;
+    const isCurrentlyAbsent = currentMark === 'A' || currentMark.startsWith('A/') || currentObsStatus === 'cross' || attendanceState[studentId] === 'Absent';
+    const isAfterHours = isAfterCollegeHours();
 
-    if (trimmed === 'A' || trimmed === 'ABSENT') {
-      obsStatus = 'absent';
-      finalMark = 'A';
-    } else if (trimmed === 'OD' || trimmed === 'ON DUTY') {
-      obsStatus = 'od';
-      finalMark = 'OD';
-    } else if (trimmed === 'X' || trimmed === 'CROSS' || trimmed === 'WRONG') {
-      obsStatus = 'cross';
-      finalMark = 'X';
-    } else if (trimmed !== '') {
-      const num = Number(trimmed);
-      if (isNaN(num) || num < 0 || num > 10) {
-        alert("Observation marks must be a number between 0 and 10, or 'A' for Absent, 'OD' for On Duty, 'X' for Wrong.");
-        return;
-      }
-      obsStatus = 'tick';
-      finalMark = trimmed;
+    const markValToParse = (value === '') 
+      ? (isCurrentlyAbsent ? 'A/10' : (isAfterHours ? 'F/10' : '')) 
+      : value;
+
+    const parsed = parseMarkInput(markValToParse, isCurrentlyAbsent, isAfterHours);
+    if (!parsed) {
+      setSignoffState(prev => ({ ...prev }));
+      return;
     }
+
+    const { obsStatus, finalMark } = parsed;
 
     setSignoffState(prev => {
       const studentState = prev[studentId] || {};
@@ -495,6 +814,42 @@ export default function FacultyDashboard() {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const handleQuickMarkAllPresent = async () => {
+    const targetExpIdx = Math.min(12, Math.max(1, sessionsCompleted));
+    const isAfterHours = isAfterCollegeHours();
+    const markToApply = isAfterHours ? 'F/10' : '10';
+
+    const updatedState = { ...signoffState };
+
+    for (const student of sectionStudents) {
+      if (attendanceState[student.id] !== 'Absent') {
+        const studentState = updatedState[student.id] || {};
+        const expState = studentState[targetExpIdx] || { observation: 'none', record: 'none' };
+        updatedState[student.id] = {
+          ...studentState,
+          [targetExpIdx]: {
+            ...expState,
+            observationMarks: markToApply,
+            observation: 'tick'
+          }
+        };
+
+        try {
+          await updateSignoff(student.id, targetExpIdx, {
+            observationMarks: markToApply,
+            observationStatus: 'tick',
+            subjectCode,
+            subjectName
+          });
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    }
+
+    setSignoffState(updatedState);
   };
 
   // CSV Export helper function using Blob
@@ -715,11 +1070,13 @@ export default function FacultyDashboard() {
               Welcome, <span className="text-blue-300 font-extrabold">{facultyData.name}</span> &bull; Academic Year 2026-2027
             </p>
           </div>
-          <div className="flex items-center gap-3 bg-slate-800/40 border border-slate-700/50 p-3 rounded-2xl">
-            <Clock className="w-5 h-5 text-blue-400" />
-            <div className="text-left font-mono">
-              <p className="text-xs font-bold text-slate-100">AI & DS Labs</p>
-              <p className="text-[10px] text-slate-400">System Clock Sync Active</p>
+          <div className="flex items-center gap-3 bg-indigo-900/70 border border-indigo-500/40 px-4 py-2.5 rounded-2xl shadow-inner">
+            <div className="p-2 bg-indigo-500/20 text-indigo-300 rounded-xl shrink-0">
+              <Clock className="w-5 h-5 text-indigo-300" />
+            </div>
+            <div className="text-left">
+              <p className="text-[10px] font-black uppercase text-indigo-300 tracking-wider">College Working Hours</p>
+              <p className="text-xs font-black text-white tracking-wide mt-0.5">8:00 AM – 3:30 PM</p>
             </div>
           </div>
         </div>
@@ -728,9 +1085,9 @@ export default function FacultyDashboard() {
       {/* LAB SESSION NOTIFICATION BANNER */}
       {(() => {
         const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-        const today = days[new Date().getDay()];
+        const currentDayName = days[new Date().getDay()];
         const todaySessions = (facultyData.timetable || []).filter(
-          (slot: any) => slot.day?.toLowerCase() === today.toLowerCase()
+          (slot: any) => slot.day?.toLowerCase() === currentDayName.toLowerCase()
         );
 
         // Request browser notification permission and send notification
@@ -739,7 +1096,7 @@ export default function FacultyDashboard() {
             Notification.requestPermission();
           }
           // Send notification only once per session (use sessionStorage to track)
-          const notifKey = `lab-notif-${user.id}-${today}`;
+          const notifKey = `lab-notif-${user.id}-${currentDayName}`;
           if (Notification.permission === 'granted' && !sessionStorage.getItem(notifKey)) {
             sessionStorage.setItem(notifKey, 'sent');
             todaySessions.forEach((slot: any) => {
@@ -809,12 +1166,20 @@ export default function FacultyDashboard() {
                   </h3>
                   <p className="text-xs text-indigo-200/90 font-medium flex items-center gap-2 mt-0.5">
                     <Mail className="w-3.5 h-3.5 text-indigo-400" /> {facultyData.email}
-                    {phoneNo && <><span>•</span> <Phone className="w-3.5 h-3.5 text-indigo-400" /> {phoneNo}</>}
                   </p>
+                  <div className="mt-2">
+                    <button
+                      onClick={() => setShowMyTimetableModal(true)}
+                      className="px-3 py-1 bg-indigo-500/25 hover:bg-indigo-500/40 text-indigo-200 border border-indigo-400/30 rounded-xl text-[11px] font-extrabold transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
+                    >
+                      <Calendar className="w-3.5 h-3.5 text-indigo-300" />
+                      <span>My Subject Timetable</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                 <div className="bg-white/10 backdrop-blur-xs p-3 rounded-2xl border border-white/10 text-center">
                   <p className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Assigned Lab</p>
                   <p className="text-xs font-extrabold text-white mt-0.5 truncate">{facultyData.labName || 'General Lab'}</p>
@@ -830,6 +1195,12 @@ export default function FacultyDashboard() {
                 <div className="bg-white/10 backdrop-blur-xs p-3 rounded-2xl border border-white/10 text-center">
                   <p className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Section Students</p>
                   <p className="text-xs font-extrabold text-amber-300 mt-0.5">{myStudents.length} Enrolled</p>
+                </div>
+                <div className="bg-amber-500/20 backdrop-blur-xs p-3 rounded-2xl border border-amber-400/30 text-center col-span-2 sm:col-span-1">
+                  <p className="text-[10px] text-amber-200 font-bold uppercase tracking-wider flex items-center justify-center gap-1">
+                    <Clock className="w-3 h-3 text-amber-300 shrink-0" /> Working Hours
+                  </p>
+                  <p className="text-xs font-black text-amber-300 mt-0.5">8:00 AM – 3:30 PM</p>
                 </div>
               </div>
             </div>
@@ -1002,26 +1373,46 @@ export default function FacultyDashboard() {
 
           {/* SIGN-OFF COUNTS SUMMARY CARD */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* OBSERVATION CARD */}
             <div className="bg-gradient-to-tr from-emerald-50/50 to-teal-50/20 p-6 rounded-3xl border border-emerald-100/50 shadow-sm space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-emerald-500 text-white rounded-xl">
-                  <FileText className="w-5 h-5" />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-emerald-500 text-white rounded-xl shadow-xs">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-slate-800 text-sm">Signed Observation Notebooks</h4>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Session {currentActiveExpIdx} (Exp {currentActiveExpIdx})</p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="font-extrabold text-slate-800 text-sm">Signed Observation Notebooks</h4>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Students with Signature</p>
-                </div>
+                <button
+                  onClick={() => setShowExpBreakdownModal(true)}
+                  className="px-3 py-1.5 bg-white hover:bg-emerald-100/80 text-emerald-800 border border-emerald-200 text-xs font-black rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  <BarChart className="w-3.5 h-3.5" />
+                  <span>View Details</span>
+                </button>
               </div>
-              <div className="pt-2 flex items-baseline gap-2">
-                <span className="text-4xl font-black text-slate-800">{studentsWithObservationSigned}</span>
+              <div className="pt-1 flex items-baseline gap-2">
+                <span className="text-4xl font-black text-slate-800">{studentsWithObservationSignedActive}</span>
                 <span className="text-base font-extrabold text-slate-400">/ {totalStudents}</span>
-                <span className="text-xs text-emerald-700 font-bold ml-1.5 bg-emerald-100/60 px-2.5 py-1 rounded-lg">
-                  Students Signed
+                <span className={`text-xs font-bold ml-1.5 px-3 py-1 rounded-lg border flex items-center gap-1 ${
+                  studentsWithObservationSignedActive === totalStudents && totalStudents > 0
+                    ? 'bg-emerald-600 text-white border-emerald-700 font-black shadow-xs'
+                    : 'bg-emerald-100/80 text-emerald-800 border-emerald-200'
+                }`}>
+                  {studentsWithObservationSignedActive === totalStudents && totalStudents > 0 ? (
+                    <><span>🎉</span> All {totalStudents} Students Signed!</>
+                  ) : (
+                    <>{studentsWithObservationSignedActive} Students Signed</>
+                  )}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-3 pt-1">
-                <div className="text-[11px] text-emerald-700 bg-emerald-50/80 p-3 rounded-xl font-medium border border-emerald-100/40 flex-1">
-                  Shows how many unique students got observation signatures in section {selectedSection}.
+                <div className="text-[11px] text-emerald-800 bg-emerald-50/80 p-3 rounded-xl font-medium border border-emerald-100/40 flex-1">
+                  {studentsWithObservationSignedActive === totalStudents && totalStudents > 0
+                    ? `All ${totalStudents} students in Section ${selectedSection} have received Observation signatures for Session ${currentActiveExpIdx}.`
+                    : `${studentsWithObservationSignedActive} out of ${totalStudents} students have signed Observation for Session ${currentActiveExpIdx}.`}
                 </div>
                 <button
                   onClick={handleExportObservationExcel}
@@ -1034,25 +1425,45 @@ export default function FacultyDashboard() {
               </div>
             </div>
 
+            {/* RECORD CARD */}
             <div className="bg-gradient-to-tr from-blue-50/50 to-indigo-50/20 p-6 rounded-3xl border border-blue-100/50 shadow-sm space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-blue-500 text-white rounded-xl">
-                  <BookOpen className="w-5 h-5" />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-blue-500 text-white rounded-xl shadow-xs">
+                    <BookOpen className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-slate-800 text-sm">Signed Record Notebooks</h4>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Session {currentActiveExpIdx} (Exp {currentActiveExpIdx})</p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="font-extrabold text-slate-800 text-sm">Signed Record Notebooks</h4>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Students with Signature</p>
-                </div>
+                <button
+                  onClick={() => setShowExpBreakdownModal(true)}
+                  className="px-3 py-1.5 bg-white hover:bg-blue-100/80 text-blue-800 border border-blue-200 text-xs font-black rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  <BarChart className="w-3.5 h-3.5" />
+                  <span>View Details</span>
+                </button>
               </div>
-              <div className="pt-2 flex items-baseline gap-2">
-                <span className="text-4xl font-black text-slate-800">{studentsWithRecordSigned}</span>
+              <div className="pt-1 flex items-baseline gap-2">
+                <span className="text-4xl font-black text-slate-800">{studentsWithRecordSignedActive}</span>
                 <span className="text-base font-extrabold text-slate-400">/ {totalStudents}</span>
-                <span className="text-xs text-blue-700 font-bold ml-1.5 bg-blue-100/60 px-2.5 py-1 rounded-lg">
-                  Students Signed
+                <span className={`text-xs font-bold ml-1.5 px-3 py-1 rounded-lg border flex items-center gap-1 ${
+                  studentsWithRecordSignedActive === totalStudents && totalStudents > 0
+                    ? 'bg-blue-600 text-white border-blue-700 font-black shadow-xs'
+                    : 'bg-blue-100/80 text-blue-800 border-blue-200'
+                }`}>
+                  {studentsWithRecordSignedActive === totalStudents && totalStudents > 0 ? (
+                    <><span>🎉</span> All {totalStudents} Students Signed!</>
+                  ) : (
+                    <>{studentsWithRecordSignedActive} Students Signed</>
+                  )}
                 </span>
               </div>
-              <div className="text-[11px] text-blue-700 bg-blue-50/80 p-3 rounded-xl font-medium border border-blue-100/40">
-                Shows how many unique students got final record signatures in section {selectedSection}.
+              <div className="text-[11px] text-blue-800 bg-blue-50/80 p-3 rounded-xl font-medium border border-blue-100/40">
+                {studentsWithRecordSignedActive === totalStudents && totalStudents > 0
+                  ? `All ${totalStudents} students in Section ${selectedSection} have received final Record signatures for Session ${currentActiveExpIdx}.`
+                  : `${studentsWithRecordSignedActive} out of ${totalStudents} students have signed Record for Session ${currentActiveExpIdx}.`}
               </div>
             </div>
           </div>
@@ -1093,6 +1504,23 @@ export default function FacultyDashboard() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
+              {/* CALENDAR SESSION DATE SELECTOR */}
+              <div className="flex items-center gap-2 bg-slate-50 hover:bg-slate-100 text-slate-800 font-extrabold text-xs rounded-xl border border-slate-200/60 px-3.5 py-2 transition shadow-sm">
+                <Calendar className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="text-slate-500 font-bold shrink-0">Date:</span>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => {
+                    setSelectedDate(e.target.value);
+                    setAttendanceState({});
+                    setIsAttendanceDirty(false);
+                    setAttendanceSavedMessage(null);
+                  }}
+                  className="bg-transparent font-extrabold text-slate-800 text-xs focus:outline-none cursor-pointer"
+                />
+              </div>
+
               {/* BATCH SELECTOR (POPPING DROPDOWN) */}
               <div className="relative">
                 <button
@@ -1243,22 +1671,27 @@ export default function FacultyDashboard() {
                     return (
                       <tr key={st.id} className="hover:bg-slate-50/50 transition-colors">
                         <td className="px-6 py-4 text-center font-bold text-slate-400">{idx + 1}</td>
-                        <td className="px-6 py-4 font-mono font-bold text-slate-700">{st.rollNo}</td>
+                        <td className="px-6 py-4 font-mono font-bold text-slate-700 whitespace-nowrap">{formatRollNo(st.rollNo)}</td>
                         <td className="px-6 py-4">
                           <div className="font-extrabold text-slate-800 text-sm">{st.name}</div>
-                          <div className="text-[10px] text-slate-400 mt-0.5">{st.email}</div>
                         </td>
                         <td className="px-6 py-4 font-semibold text-slate-500">{st.registerNo}</td>
                         <td className="px-6 py-4 text-center">
-                          <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wide border ${
-                            status === 'Present' 
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                              : status === 'On Duty'
-                              ? 'bg-amber-50 text-amber-700 border-amber-200'
-                              : 'bg-rose-50 text-rose-700 border-rose-200'
-                          }`}>
-                            {status}
-                          </span>
+                          <select
+                            value={status}
+                            onChange={(e) => handleToggleAttendance(st.id, e.target.value as 'Present' | 'Absent' | 'On Duty')}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wide border cursor-pointer focus:outline-none focus:ring-2 transition-all shadow-xs ${
+                              status === 'Present' 
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 focus:ring-emerald-500/20' 
+                                : status === 'On Duty'
+                                ? 'bg-amber-50 text-amber-800 border-amber-300 focus:ring-amber-500/20'
+                                : 'bg-rose-50 text-rose-800 border-rose-300 focus:ring-rose-500/20'
+                            }`}
+                          >
+                            <option value="Present" className="bg-white text-emerald-800 font-bold">✔ Present (P)</option>
+                            <option value="Absent" className="bg-white text-rose-800 font-bold">✖ Absent (A)</option>
+                            <option value="On Duty" className="bg-white text-amber-800 font-bold">⚡ On Duty (OD)</option>
+                          </select>
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex justify-center items-center gap-1.5">
@@ -1327,17 +1760,15 @@ export default function FacultyDashboard() {
                   <p className="text-xs text-slate-400">
                     Check off experiment approvals. Tap cells to toggle status (✔ Signed / ✖ Pending).
                   </p>
-                  <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200/80 px-2.5 py-1 rounded-xl">
-                    <span className="text-[11px] font-extrabold text-indigo-900 uppercase">Sessions Completed:</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={12}
-                      value={sessionsCompleted}
-                      onChange={(e) => handleUpdateSessionsCompleted(parseInt(e.target.value, 10))}
-                      className="w-10 text-center font-black text-xs text-indigo-950 bg-white border border-indigo-300 rounded-lg py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
-                    <span className="text-[11px] font-bold text-indigo-600">/ 12</span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setShowTodayExpModal(true)}
+                      className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-3.5 py-1.5 rounded-xl transition shadow-md shadow-indigo-600/20 active:scale-95 cursor-pointer"
+                    >
+                      <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+                      <span>Conducting Today: Exp {sessionsCompleted} ({LAB_EXERCISES[sessionsCompleted - 1]?.name || `Experiment ${sessionsCompleted}`})</span>
+                      <span className="text-[10px] bg-indigo-800/90 px-2 py-0.5 rounded-md text-indigo-100 font-bold uppercase tracking-wider">Change</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1420,14 +1851,24 @@ export default function FacultyDashboard() {
                   )}
                 </div>
 
-                <button
-                  onClick={handleExportObservationExcel}
-                  className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-md shadow-emerald-600/10 active:scale-95"
-                  title="Download Observation Records as Excel (.xlsx) Spreadsheet"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Download Observation Records (.xlsx)</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleQuickMarkAllPresent}
+                    className="py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-md shadow-indigo-600/10 active:scale-95"
+                    title="Quickly evaluate 10/10 (or F/10 after hours) for all Present students in this session"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Quick Mark 10 All Present</span>
+                  </button>
+                  <button
+                    onClick={handleExportObservationExcel}
+                    className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-md shadow-emerald-600/10 active:scale-95"
+                    title="Download Observation Records as Excel (.xlsx) Spreadsheet"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Download Observation Records (.xlsx)</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1459,6 +1900,20 @@ export default function FacultyDashboard() {
             </div>
           </div>
 
+          {/* FAST EVALUATION SHORTCUTS BAR */}
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-indigo-50/70 border border-indigo-100 rounded-2xl text-xs font-semibold text-indigo-900 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-md bg-indigo-600 text-white font-extrabold text-[10px] uppercase tracking-wider">Smooth Evaluation Shortcuts</span>
+              <span>Press <kbd className="px-1.5 py-0.5 bg-white border border-indigo-200 rounded font-mono text-indigo-700 font-extrabold shadow-2xs">↓</kbd> or <kbd className="px-1.5 py-0.5 bg-white border border-indigo-200 rounded font-mono text-indigo-700 font-extrabold shadow-2xs">Enter</kbd> to jump to next student instantly.</span>
+            </div>
+            <div className="flex items-center gap-3 text-[11px] font-bold text-slate-600">
+              <span className="flex items-center gap-1.5"><span className="px-1.5 py-0.5 rounded bg-emerald-600 text-white font-black text-[10px]">10</span> Mark (0-10)</span>
+              <span className="flex items-center gap-1.5"><span className="px-1.5 py-0.5 rounded bg-rose-600 text-white font-black text-[10px]">A</span> Absent</span>
+              <span className="flex items-center gap-1.5"><span className="px-1.5 py-0.5 rounded bg-amber-600 text-white font-black text-[10px]">F/10</span> After-Hours</span>
+              <span className="flex items-center gap-1.5"><span className="px-1.5 py-0.5 rounded bg-indigo-600 text-white font-black text-[10px]">L/10</span> Late Entry</span>
+            </div>
+          </div>
+
           {/* MAIN GRID SHEET */}
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
@@ -1467,7 +1922,7 @@ export default function FacultyDashboard() {
                   {/* Row 1 headings: Week labels */}
                   <tr className="bg-slate-50 text-[10px] font-extrabold uppercase text-slate-400 tracking-widest border-b border-slate-100">
                     <th rowSpan={2} className="px-4 py-4 text-center border-r border-slate-100">S.No</th>
-                    <th rowSpan={2} className="px-4 py-4 border-r border-slate-100 min-w-[90px]">Roll No</th>
+                    <th rowSpan={2} className="px-4 py-4 border-r border-slate-100 min-w-[130px] whitespace-nowrap">Roll No</th>
                     <th rowSpan={2} className="px-4 py-4 border-r border-slate-100 min-w-[140px]">Student Name</th>
                     <th rowSpan={2} className="px-4 py-4 border-r border-slate-100 min-w-[110px]">Register No</th>
                     {[1, 2, 3, 4, 5, 6].map((week) => (
@@ -1482,25 +1937,39 @@ export default function FacultyDashboard() {
                   </tr>
                   {/* Row 2 headings: Experiment labels */}
                   <tr className="bg-slate-50 text-[9px] font-black uppercase text-slate-500 tracking-wide border-b border-slate-200">
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((expIdx) => (
-                      <th 
-                        key={expIdx} 
-                        className="px-2 py-3 text-center border-r border-slate-100 min-w-[70px] hover:bg-slate-100/50 transition cursor-help"
-                        title={LAB_EXERCISES[expIdx - 1]?.name}
-                      >
-                        Exp {expIdx}
-                      </th>
-                    ))}
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((expIdx) => {
+                      const isConductingToday = expIdx === sessionsCompleted;
+                      return (
+                        <th 
+                          key={expIdx} 
+                          onClick={() => handleUpdateSessionsCompleted(expIdx)}
+                          className={`px-2 py-2.5 text-center border-r transition cursor-pointer min-w-[75px] ${
+                            isConductingToday
+                              ? 'bg-indigo-600 text-white border-indigo-700 font-black shadow-md shadow-indigo-600/30'
+                              : 'border-slate-100 hover:bg-slate-100/80 text-slate-600'
+                          }`}
+                          title={`Exp ${expIdx}: ${LAB_EXERCISES[expIdx - 1]?.name} (Click to set as today's active experiment)`}
+                        >
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span>Exp {expIdx}</span>
+                            {isConductingToday && (
+                              <span className="text-[7px] font-black bg-amber-400 text-slate-950 px-1 py-0.2 rounded tracking-tighter uppercase shadow-2xs">Active Today</span>
+                            )}
+                          </div>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
                   {sectionStudents.map((st, idx) => (
                     <tr key={st.id} className="hover:bg-slate-50/30 transition-colors">
                       <td className="px-4 py-4 text-center font-bold text-slate-400 border-r border-slate-100 bg-slate-50/20">{idx + 1}</td>
-                      <td className="px-4 py-4 font-mono font-bold text-slate-700 border-r border-slate-100">{st.rollNo}</td>
+                      <td className="px-4 py-4 font-mono font-bold text-slate-700 border-r border-slate-100 whitespace-nowrap">{formatRollNo(st.rollNo)}</td>
                       <td className="px-4 py-4 font-extrabold text-slate-800 border-r border-slate-100">{st.name}</td>
                       <td className="px-4 py-4 font-semibold text-slate-500 border-r border-slate-100">{st.registerNo}</td>
                                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((expIdx) => {
+                        const isSelectedExp = expIdx === sessionsCompleted;
                         const cellState = signoffState[st.id]?.[expIdx] || { observation: 'none', record: 'tick' };
                         const status = notebookMode === 'observation' ? cellState.observation : cellState.record;
                         const hasObsMark = cellState.observationMarks !== undefined && cellState.observationMarks !== '' && cellState.observationMarks !== null;
@@ -1510,11 +1979,15 @@ export default function FacultyDashboard() {
                             key={expIdx} 
                             onClick={() => {
                               if (notebookMode === 'record') {
-                                handleToggleSignoff(st.id, expIdx, 'record');
+                                if (isSelectedExp) {
+                                  handleToggleSignoff(st.id, expIdx, 'record');
+                                }
                               }
                             }}
                             className={`px-2 py-3.5 text-center border-r border-slate-100 transition-all duration-200 select-none ${
-                              notebookMode === 'record'
+                              !isSelectedExp
+                                ? 'opacity-30 bg-slate-100/50 cursor-not-allowed pointer-events-none'
+                                : notebookMode === 'record'
                                 ? 'cursor-pointer ' + (status === 'tick'
                                   ? 'bg-emerald-50/40 hover:bg-emerald-100/60' 
                                   : status === 'cross'
@@ -1522,70 +1995,91 @@ export default function FacultyDashboard() {
                                   : 'bg-slate-50/10 hover:bg-slate-100/40')
                                 : (hasObsMark || cellState.observation === 'tick'
                                   ? 'bg-emerald-50/50 hover:bg-emerald-100/60'
-                                  : '')
+                                  : 'bg-indigo-50/20')
                             }`}
                           >
                             <div className="flex items-center justify-center">
-                               {notebookMode === 'observation' ? (
-                                <div className="flex flex-col items-center gap-1 group/obs">
-                                  <input
-                                    type="text"
-                                    value={cellState.observationMarks !== undefined ? cellState.observationMarks : ''}
-                                    onChange={(e) => handleLocalMarksChange(st.id, expIdx, e.target.value)}
-                                    onBlur={(e) => handleSaveMarks(st.id, expIdx, e.target.value)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        handleSaveMarks(st.id, expIdx, (e.target as HTMLInputElement).value);
-                                        (e.target as HTMLInputElement).blur();
-                                      }
-                                    }}
-                                    className={`w-14 text-center rounded-lg py-1 font-extrabold text-xs transition-all shadow-xs focus:outline-none focus:ring-2 ${
-                                      cellState.observationMarks === 'A'
-                                        ? 'bg-rose-600 text-white border-2 border-rose-700 font-black shadow-sm'
-                                        : cellState.observationMarks === 'OD'
-                                        ? 'bg-amber-500 text-white border-2 border-amber-600 font-black shadow-sm'
-                                        : cellState.observationMarks === 'X' || cellState.observation === 'cross'
-                                        ? 'bg-rose-100 text-rose-700 border-2 border-rose-400 font-black'
-                                        : (hasObsMark || cellState.observation === 'tick'
-                                          ? 'bg-emerald-600 text-white border-2 border-emerald-700 font-black shadow-sm'
-                                          : 'bg-white text-slate-800 border border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 font-bold')
-                                    }`}
-                                    placeholder="Mark/A"
-                                  />
-                                  <div className="flex items-center gap-0.5 opacity-70 group-hover/obs:opacity-100 transition-opacity">
-                                    <button
-                                      type="button"
-                                      title="Set 10 Marks"
-                                      onClick={(e) => { e.stopPropagation(); handleSaveMarks(st.id, expIdx, '10'); }}
-                                      className="px-1 py-0.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded text-[9px] font-black cursor-pointer"
-                                    >
-                                      10
-                                    </button>
-                                    <button
-                                      type="button"
-                                      title="Set Wrong (X)"
-                                      onClick={(e) => { e.stopPropagation(); handleSaveMarks(st.id, expIdx, 'X'); }}
-                                      className="px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded text-[9px] font-black cursor-pointer"
-                                    >
-                                      X
-                                    </button>
-                                    <button
-                                      type="button"
-                                      title="Set Absent (A)"
-                                      onClick={(e) => { e.stopPropagation(); handleSaveMarks(st.id, expIdx, 'A'); }}
-                                      className="px-1 py-0.5 bg-red-100 hover:bg-red-200 text-red-800 rounded text-[9px] font-black cursor-pointer"
-                                    >
-                                      A
-                                    </button>
-                                    <button
-                                      type="button"
-                                      title="Set On Duty (OD)"
-                                      onClick={(e) => { e.stopPropagation(); handleSaveMarks(st.id, expIdx, 'OD'); }}
-                                      className="px-1 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded text-[9px] font-black cursor-pointer"
-                                    >
-                                      OD
-                                    </button>
-                                  </div>
+                              {notebookMode === 'observation' ? (
+                                <div className="flex flex-col items-center gap-1">
+                                  {(() => {
+                                    const isStudentAbsent = attendanceState[st.id] === 'Absent';
+                                    const isAfterHours = isAfterCollegeHours();
+                                    const rawMark = cellState.observationMarks;
+                                    const displayMark = (rawMark !== undefined && rawMark !== null && rawMark !== '') 
+                                      ? rawMark 
+                                      : (isStudentAbsent && isSelectedExp 
+                                        ? 'A/10' 
+                                        : (isAfterHours && isSelectedExp 
+                                          ? 'F/10' 
+                                          : ''));
+
+                                    const isFMark = typeof displayMark === 'string' && (displayMark.startsWith('F/') || displayMark.startsWith('F-'));
+                                    const isLMark = typeof displayMark === 'string' && (displayMark.startsWith('L/') || displayMark.startsWith('L-'));
+                                    const isAMark = typeof displayMark === 'string' && (displayMark.startsWith('A/') || displayMark === 'A');
+
+                                    const cellId = `${st.id}-${expIdx}`;
+                                    const isFocused = focusedCell === cellId;
+
+                                    return (
+                                      <input
+                                        id={`mark-input-${idx}-${expIdx}`}
+                                        type="text"
+                                        value={displayMark}
+                                        disabled={!isSelectedExp}
+                                        readOnly={!isSelectedExp}
+                                        onFocus={(e) => {
+                                          if (!isSelectedExp) return;
+                                          setFocusedCell(cellId);
+                                          e.target.select();
+                                        }}
+                                        onChange={(e) => {
+                                          if (!isSelectedExp) return;
+                                          handleLocalMarksChange(st.id, expIdx, e.target.value);
+                                        }}
+                                        onBlur={(e) => {
+                                          if (!isSelectedExp) return;
+                                          setFocusedCell(null);
+                                          handleSaveMarks(st.id, expIdx, e.target.value);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (!isSelectedExp) return;
+                                          if (e.key === 'Enter' || e.key === 'ArrowDown') {
+                                            e.preventDefault();
+                                            (e.target as HTMLInputElement).blur();
+                                            focusMarkInput(idx + 1, expIdx);
+                                          } else if (e.key === 'ArrowUp') {
+                                            e.preventDefault();
+                                            (e.target as HTMLInputElement).blur();
+                                            focusMarkInput(idx - 1, expIdx);
+                                          }
+                                        }}
+                                        className={`w-14 text-center rounded-lg py-1 font-extrabold text-xs transition-all shadow-xs focus:outline-none placeholder:text-slate-600 placeholder:font-black ${
+                                          !isSelectedExp
+                                            ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                                            : isFocused
+                                            ? 'bg-white text-slate-900 border-2 border-indigo-600 ring-4 ring-indigo-100 font-black text-sm scale-110 z-20 shadow-lg'
+                                            : displayMark === 'A'
+                                            ? 'bg-rose-600 text-white border-2 border-rose-700 font-black shadow-sm'
+                                            : isAMark
+                                            ? 'bg-rose-500 text-white border-2 border-rose-600 font-black shadow-sm'
+                                            : displayMark === 'OD'
+                                            ? 'bg-amber-500 text-white border-2 border-amber-600 font-black shadow-sm'
+                                            : isFMark
+                                            ? 'bg-amber-600 text-white border-2 border-amber-700 font-black shadow-sm'
+                                            : isLMark
+                                            ? 'bg-indigo-600 text-white border-2 border-indigo-700 font-black shadow-sm'
+                                            : displayMark === 'X' || cellState.observation === 'cross'
+                                            ? 'bg-rose-100 text-rose-700 border-2 border-rose-400 font-black'
+                                            : (hasObsMark || cellState.observation === 'tick'
+                                              ? 'bg-emerald-600 text-white border-2 border-emerald-700 font-black shadow-sm'
+                                              : (isAfterHours
+                                                ? 'bg-amber-50/50 text-amber-900 border border-amber-300 font-bold placeholder:text-amber-600/70'
+                                                : 'bg-white text-slate-800 border border-slate-200 font-bold'))
+                                        }`}
+                                        placeholder={isSelectedExp && isAfterHours ? "F/" : "-"}
+                                      />
+                                    );
+                                  })()}
                                 </div>
                               ) : (
                                 <div className="cursor-pointer">
@@ -1684,9 +2178,306 @@ export default function FacultyDashboard() {
       )}
 
       {/* =======================================================
-          PAGE 5: DEDICATED INSTITUTIONAL FACULTY PROFILE VIEW
+          PAGE 5: DAY-BY-DAY ATTENDANCE REPORTS
           ======================================================= */}
       {activePage === 5 && (
+        <div className="space-y-6 animate-fade-in">
+          {/* HEADER & DATE SELECTOR TOOLBAR */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="p-2 bg-indigo-50 text-indigo-700 rounded-xl">
+                  <CalendarDays className="w-5 h-5" />
+                </div>
+                <h2 className="text-lg font-extrabold text-slate-800">Day-by-Day Attendance Reports</h2>
+                <span className="px-3 py-1 bg-indigo-100/80 text-indigo-700 text-[11px] font-black rounded-full border border-indigo-200 uppercase tracking-wide">
+                  Ref: {uniqueReportRef}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                Inspect daily student attendance records and export unique institutional attendance logs for any selected date.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {/* DATE PICKER */}
+              <div className="flex items-center gap-2 bg-slate-50 hover:bg-slate-100 text-slate-800 font-extrabold text-xs rounded-xl border border-slate-200/60 px-3.5 py-2 transition shadow-sm">
+                <Calendar className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span className="text-slate-500 font-bold shrink-0">Select Date:</span>
+                <input
+                  type="date"
+                  value={reportDate}
+                  onChange={(e) => setReportDate(e.target.value)}
+                  className="bg-transparent font-black text-slate-900 focus:outline-none cursor-pointer"
+                />
+              </div>
+
+              {/* QUICK DATE SHORTCUT BUTTONS */}
+              <button
+                type="button"
+                onClick={() => setReportDate(getLocalDateString())}
+                className={`px-3.5 py-2 text-xs font-bold rounded-xl border transition cursor-pointer ${
+                  reportDate === getLocalDateString()
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const d = new Date();
+                  d.setDate(d.getDate() - 1);
+                  setReportDate(getLocalDateString(d));
+                }}
+                className="px-3.5 py-2 text-xs font-bold rounded-xl border bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Yesterday
+              </button>
+
+              {/* EXPORT BUTTON */}
+              <button
+                onClick={handleExportDayReport}
+                className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-md shadow-emerald-600/10 active:scale-95"
+                title="Download Day Attendance Report as Excel (.xlsx)"
+              >
+                <Download className="w-4 h-4" />
+                <span>Export Day Report (.xlsx)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* DAILY KPI METRICS CARDS */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] text-slate-400 font-black uppercase tracking-wider">Attendance Rate</p>
+                <h3 className="text-2xl font-black text-slate-800 mt-1">{dailyAttendancePct}%</h3>
+                <p className="text-[10px] text-slate-500 font-semibold mt-0.5">{dailyPresentCount} of {dailyTotalCount} Present</p>
+              </div>
+              <div className="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] text-slate-400 font-black uppercase tracking-wider">Present Today</p>
+                <h3 className="text-2xl font-black text-emerald-600 mt-1">{dailyPresentCount}</h3>
+                <p className="text-[10px] text-emerald-700 font-semibold mt-0.5">Students Marked Present</p>
+              </div>
+              <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-black">
+                <Check className="w-6 h-6" />
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] text-slate-400 font-black uppercase tracking-wider">Absentees Today</p>
+                <h3 className="text-2xl font-black text-rose-600 mt-1">{dailyAbsentCount}</h3>
+                <p className="text-[10px] text-rose-700 font-semibold mt-0.5">Students Absent on {reportDate}</p>
+              </div>
+              <div className="w-11 h-11 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center font-black">
+                <XCircle className="w-6 h-6" />
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] text-slate-400 font-black uppercase tracking-wider">On Duty Today</p>
+                <h3 className="text-2xl font-black text-amber-600 mt-1">{dailyODCount}</h3>
+                <p className="text-[10px] text-amber-700 font-semibold mt-0.5">Students On Duty on {reportDate}</p>
+              </div>
+              <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center font-black">
+                <Clock className="w-6 h-6" />
+              </div>
+            </div>
+          </div>
+            
+          {/* SEARCH TOOLBAR & VIEW TOGGLE SWITCH */}
+          <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="inline-flex p-1 bg-slate-100/80 rounded-2xl border border-slate-200/60 shadow-inner">
+              <button
+                type="button"
+                onClick={() => setReportViewTab('attendance')}
+                className={`px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer ${
+                  reportViewTab === 'attendance'
+                    ? 'bg-white text-indigo-700 shadow-md border border-slate-200/80'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Daily Attendance Roster
+              </button>
+              <button
+                type="button"
+                onClick={() => setReportViewTab('evaluations')}
+                className={`px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer ${
+                  reportViewTab === 'evaluations'
+                    ? 'bg-white text-indigo-700 shadow-md border border-slate-200/80'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Daily Observation Records
+              </button>
+            </div>
+
+            <div className="relative max-w-xs w-full">
+              <input
+                type="text"
+                value={reportSearchQuery}
+                onChange={(e) => setReportSearchQuery(e.target.value)}
+                placeholder="Search student or roll no..."
+                className="w-full pl-3.5 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              />
+            </div>
+          </div>
+
+          {/* REPORT DATA TABLES */}
+          {reportViewTab === 'attendance' ? (
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 text-[10px] font-extrabold uppercase tracking-wider">
+                      <th className="px-6 py-4 text-center">S.No</th>
+                      <th className="px-6 py-4">Roll No</th>
+                      <th className="px-6 py-4">Student Name</th>
+                      <th className="px-6 py-4">Register Number</th>
+                      <th className="px-6 py-4">Section / Batch</th>
+                      <th className="px-6 py-4 text-center">Attendance Status on {reportDate}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 text-xs">
+                    {filteredAttendanceList.map((item, idx) => (
+                      <tr key={item.student.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-4 text-center font-bold text-slate-400">{idx + 1}</td>
+                        <td className="px-6 py-4 font-mono font-bold text-slate-700 whitespace-nowrap">{formatRollNo(item.student.rollNo)}</td>
+                        <td className="px-6 py-4">
+                          <div className="font-extrabold text-slate-800 text-sm">{item.student.name}</div>
+                        </td>
+                        <td className="px-6 py-4 font-semibold text-slate-500">{item.student.registerNo || '-'}</td>
+                        <td className="px-6 py-4 font-semibold text-slate-600">{item.student.section || selectedSection} • {selectedBatch}</td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wide border inline-block ${
+                            item.rawStatus === 'Present'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : item.rawStatus === 'On Duty'
+                              ? 'bg-amber-50 text-amber-700 border-amber-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                          }`}>
+                            {item.rawStatus}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredAttendanceList.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-semibold text-sm">
+                          No attendance records found for {reportDate} matching filter.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 text-[10px] font-extrabold uppercase tracking-wider">
+                      <th className="px-6 py-4 text-center">S.No</th>
+                      <th className="px-6 py-4">Roll No</th>
+                      <th className="px-6 py-4">Student Name</th>
+                      <th className="px-6 py-4">Register Number</th>
+                      <th className="px-6 py-4 text-center">Observation Notebook Record ({reportDate})</th>
+                      <th className="px-6 py-4 text-center">Record Notebook Status ({reportDate})</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 text-xs">
+                    {filteredAttendanceList.map((item, idx) => (
+                      <tr key={item.student.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-4 text-center font-bold text-slate-400">{idx + 1}</td>
+                        <td className="px-6 py-4 font-mono font-bold text-slate-700 whitespace-nowrap">{formatRollNo(item.student.rollNo)}</td>
+                        <td className="px-6 py-4">
+                          <div className="font-extrabold text-slate-800 text-sm">{item.student.name}</div>
+                        </td>
+                        <td className="px-6 py-4 font-semibold text-slate-500">{item.student.registerNo || '-'}</td>
+                        <td className="px-6 py-4 text-center">
+                          {item.obsItems && item.obsItems.length > 0 ? (
+                            <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-[280px] mx-auto">
+                              {item.obsItems.map((expItem: any, eIdx: number) => {
+                                const scoreStr = String(expItem.score || '');
+                                const isF = scoreStr.startsWith('F/') || scoreStr.startsWith('F-');
+                                const isA = scoreStr === 'A' || scoreStr.startsWith('A/');
+                                const isL = scoreStr.startsWith('L/') || scoreStr.startsWith('L-');
+                                const isPass = scoreStr === '10' || expItem.score === 10;
+
+                                return (
+                                  <span 
+                                    key={eIdx}
+                                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-black border shadow-2xs ${
+                                      isA
+                                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                        : isF
+                                        ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                        : isL
+                                        ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                                        : isPass
+                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                        : 'bg-blue-50 text-blue-800 border-blue-200'
+                                    }`}
+                                  >
+                                    <span className="text-slate-400 font-extrabold text-[10px]">Exp {expItem.expNum}:</span>
+                                    <span>{expItem.score}</span>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 font-semibold text-xs">-</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {item.recItems && item.recItems.length > 0 ? (
+                            <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-[280px] mx-auto">
+                              {item.recItems.map((recItem: any, rIdx: number) => (
+                                <span 
+                                  key={rIdx}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-black bg-indigo-50 text-indigo-800 border border-indigo-200 shadow-2xs"
+                                >
+                                  <span className="text-indigo-400 font-extrabold text-[10px]">Exp {recItem.expNum}:</span>
+                                  <span>{recItem.status}</span>
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 font-semibold text-xs">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredAttendanceList.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-semibold text-sm">
+                          No observation records found for {reportDate} matching filter.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* =======================================================
+          PAGE 6: DEDICATED INSTITUTIONAL FACULTY PROFILE VIEW
+          ======================================================= */}
+      {activePage === 6 && (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
           <div className="bg-white rounded-3xl border border-slate-100 p-8 md:p-10 shadow-sm space-y-8">
             <div className="flex flex-col md:flex-row items-center justify-between gap-8 pb-8 border-b border-slate-100">
@@ -1786,10 +2577,6 @@ export default function FacultyDashboard() {
                     <span className="text-slate-850 font-black text-blue-600">{facultyData.email}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b border-slate-50">
-                    <span className="text-slate-500 font-bold">Authorized Phone Number</span>
-                    <span className="text-slate-850 font-black">{phoneNo}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b border-slate-50">
                     <span className="text-slate-500 font-bold">Handling Batch Sections</span>
                     <span className="text-slate-850 font-black">{facultyData.batch || 'AI & DS-A1, AI & DS-A2'}</span>
                   </div>
@@ -1866,10 +2653,6 @@ export default function FacultyDashboard() {
                 <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
                   <span className="text-slate-400 font-bold block mb-1">OFFICIAL MAIL ID</span>
                   <span className="text-slate-800 font-extrabold break-all">{facultyData.email}</span>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                  <span className="text-slate-400 font-bold block mb-1">PHONE NUMBER</span>
-                  <span className="text-slate-800 font-bold">{phoneNo}</span>
                 </div>
                 <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
                   <span className="text-slate-400 font-bold block mb-1">LAB ROOM NAME</span>
@@ -1966,16 +2749,6 @@ export default function FacultyDashboard() {
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold uppercase text-slate-400">Authorized Phone Number</label>
-                <input 
-                  type="text" 
-                  value={editForm.phone} 
-                  onChange={e => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
                 <label className="text-[10px] font-bold uppercase text-slate-400">Handling Batches / Sections</label>
                 <input 
                   type="text" 
@@ -2005,6 +2778,214 @@ export default function FacultyDashboard() {
           </div>
         </div>
       )}
+
+      {/* EXPERIMENT SIGNOFF BREAKDOWN MODAL */}
+      {showExpBreakdownModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col overflow-hidden transform scale-100 transition-all">
+            <div className="bg-gradient-to-r from-blue-950 to-[#0B192C] text-white p-6 flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="text-lg font-black tracking-tight">Experiment-Wise Student Signoff Breakdown</h3>
+                <p className="text-xs text-indigo-200 font-semibold mt-0.5">Section {selectedSection} • Total Students: {totalStudents}</p>
+              </div>
+              <button 
+                onClick={() => setShowExpBreakdownModal(false)}
+                className="text-slate-300 hover:text-white p-1.5 hover:bg-slate-800/50 rounded-xl transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto space-y-4">
+              <div className="rounded-2xl border border-slate-100 overflow-hidden shadow-2xs">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-black uppercase text-[10px] tracking-wider">
+                      <th className="px-4 py-3 text-center">Exp #</th>
+                      <th className="px-4 py-3">Experiment Name</th>
+                      <th className="px-4 py-3 text-center">Observation Signed</th>
+                      <th className="px-4 py-3 text-center">Record Signed</th>
+                      <th className="px-4 py-3 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {experimentSignoffBreakdown.map((item) => (
+                      <tr key={item.expIdx} className={`hover:bg-slate-50/60 transition ${item.isCurrent ? 'bg-indigo-50/40 font-extrabold' : ''}`}>
+                        <td className="px-4 py-3.5 text-center font-bold text-slate-500">{item.expIdx}</td>
+                        <td className="px-4 py-3.5 font-bold text-slate-800">{item.name}</td>
+                        <td className="px-4 py-3.5 text-center">
+                          <span className={`px-2.5 py-1 rounded-lg text-[11px] font-black border inline-block ${
+                            item.isAllObsSigned
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300 shadow-2xs'
+                              : item.obsSigned > 0
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-slate-100 text-slate-400 border-slate-200'
+                          }`}>
+                            {item.obsSigned} / {item.total} {item.isAllObsSigned ? '🎉 All Signed!' : ''}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 text-center">
+                          <span className={`px-2.5 py-1 rounded-lg text-[11px] font-black border inline-block ${
+                            item.isAllRecSigned
+                              ? 'bg-blue-100 text-blue-800 border-blue-300 shadow-2xs'
+                              : item.recSigned > 0
+                              ? 'bg-blue-50 text-blue-700 border-blue-200'
+                              : 'bg-slate-100 text-slate-400 border-slate-200'
+                          }`}>
+                            {item.recSigned} / {item.total} {item.isAllRecSigned ? '🎉 All Signed!' : ''}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 text-center">
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                            item.isCurrent
+                              ? 'bg-indigo-600 text-white'
+                              : item.isAllObsSigned
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-slate-200 text-slate-600'
+                          }`}>
+                            {item.isCurrent ? 'Active Session' : (item.isAllObsSigned ? 'Completed' : 'Pending')}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end shrink-0">
+              <button
+                onClick={() => setShowExpBreakdownModal(false)}
+                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl cursor-pointer transition shadow-sm"
+              >
+                Close Breakdown
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TODAY'S EXPERIMENT SELECTION MODAL */}
+      {showTodayExpModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-md w-full overflow-hidden transform scale-100 transition-all">
+            <div className="bg-gradient-to-r from-blue-950 to-[#0B192C] text-white p-5 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-indigo-500/30 rounded-xl border border-indigo-400/30">
+                  <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black tracking-tight">Select Today's Experiment Number</h3>
+                  <p className="text-[11px] text-indigo-200 font-semibold">Which Exp No are you evaluating for Section {selectedSection}?</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowTodayExpModal(false)}
+                className="text-slate-300 hover:text-white p-1 hover:bg-slate-800/50 rounded-lg transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-5 space-y-3">
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Select Experiment Number:</p>
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((expNum) => {
+                  const isSelected = sessionsCompleted === expNum;
+
+                  return (
+                    <button
+                      key={expNum}
+                      onClick={() => {
+                        handleUpdateSessionsCompleted(expNum);
+                        setShowTodayExpModal(false);
+                      }}
+                      className={`py-3.5 px-2 rounded-2xl border text-center font-black transition-all cursor-pointer shadow-xs ${
+                        isSelected
+                          ? 'bg-indigo-600 text-white border-indigo-700 ring-4 ring-indigo-100 text-sm shadow-md scale-105'
+                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-300 text-xs'
+                      }`}
+                    >
+                      EXP {expNum}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end shrink-0">
+              <button
+                onClick={() => setShowTodayExpModal(false)}
+                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold rounded-xl cursor-pointer transition shadow-md shadow-indigo-600/20"
+              >
+                Confirm EXP {sessionsCompleted} & Start Evaluation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MY SUBJECT TIMETABLE MODAL (FACULTY DASHBOARD) */}
+      {showMyTimetableModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col overflow-hidden transform scale-100 transition-all">
+            <div className="bg-gradient-to-r from-blue-950 to-[#0B192C] text-white p-6 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-500/30 rounded-xl border border-indigo-400/30">
+                  <Calendar className="w-6 h-6 text-indigo-300" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black tracking-tight">Assigned Subject Timetable Schedule</h3>
+                  <p className="text-xs text-indigo-200 font-semibold mt-0.5">{subjectName} ({subjectCode}) • Section {selectedSection}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowMyTimetableModal(false)}
+                className="text-slate-300 hover:text-white p-1.5 hover:bg-slate-800/50 rounded-xl transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto">
+              {(() => {
+                const savedImg = localStorage.getItem(`faculty_timetable_${user.id}`) || localStorage.getItem(`faculty_timetable_${user.email}`) || facultyData.timetableImage || null;
+                if (savedImg) {
+                  return (
+                    <div className="space-y-4">
+                      <div className="bg-slate-900 p-3 rounded-2xl border border-slate-800 flex justify-center items-center overflow-hidden max-h-[520px] shadow-lg">
+                        <img src={savedImg} alt="My Subject Timetable Schedule" className="max-h-[500px] w-auto object-contain rounded-xl" />
+                      </div>
+                      <p className="text-xs text-slate-500 text-center font-medium">Assigned by HOD for your handling subject ({subjectName})</p>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="py-16 text-center space-y-3">
+                    <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto border border-indigo-100">
+                      <Calendar className="w-7 h-7" />
+                    </div>
+                    <h4 className="font-extrabold text-slate-800 text-base">No Timetable Image Uploaded Yet</h4>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                      Your HOD has not uploaded a timetable image for your handling subject ({subjectName}) yet. Once uploaded by HOD in Faculty Access, it will appear here.
+                    </p>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end shrink-0">
+              <button
+                onClick={() => setShowMyTimetableModal(false)}
+                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl cursor-pointer transition shadow-sm"
+              >
+                Close Timetable
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+// FacultyDashboard Component End

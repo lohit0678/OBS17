@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+.mongo_data/
+*.zip
+backup_files/
