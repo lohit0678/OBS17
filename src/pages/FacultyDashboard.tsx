@@ -309,7 +309,7 @@ export default function FacultyDashboard() {
     }
   };
 
-  // Automatic Email Notification Trigger on Session Day Load
+  // Automatic Email Notification Trigger on Session Day Load (Strictly on Lab Days)
   useEffect(() => {
     const daysShort = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
     const currentDayCode = daysShort[new Date().getDay()];
@@ -317,32 +317,36 @@ export default function FacultyDashboard() {
 
     const savedRaw = localStorage.getItem(`faculty_timetable_${user.id}`) || localStorage.getItem(`faculty_timetable_${user.email}`) || null;
     let savedShortForm = getSubjectShortForm(subjectName, undefined, subjectCode);
-    let savedPeriod: string | null = null;
     if (savedRaw) {
       try {
         const parsed = JSON.parse(savedRaw);
-        if (parsed?.period) savedPeriod = parsed.period;
         if (parsed?.subjectShortForm) savedShortForm = parsed.subjectShortForm;
       } catch { /* silent */ }
     }
 
     const sfUpper = (savedShortForm || getSubjectShortForm(subjectName, undefined, subjectCode)).toUpperCase();
-    const PANIMALAR_MATRIX: Record<string, Record<string, string>> = {
-      MON: { KIES: 'Period 6 (1.15 PM - 1.55 PM)' },
-      TUE: { KIES: 'Period 2 (8.50 AM - 9.40 AM)' },
-      WED: { KIES: 'Period 2 (8.50 AM - 9.40 AM)' },
-      THU: { KIES: 'Period 3 (9.40 AM - 10.30 AM)' },
-      FRI: { KIES: 'Period 2 & 3 KIES LAB (8.50 AM - 10.30 AM) & Period 6 (1.15 PM - 1.55 PM)' }
+
+    // Panimalar Lab Schedule Mapping
+    const PANIMALAR_LAB_DAYS: Record<string, string> = {
+      KIES: 'FRI',
+      'KIES LAB': 'FRI',
+      DA: 'TUE',
+      'DA LAB': 'TUE',
+      DEV: 'THU',
+      'DEV LAB': 'THU',
+      TSP: 'MON',
+      'TSP 4 LAB': 'MON'
     };
 
-    const hasClass = currentDayCode !== 'SUN' && currentDayCode !== 'SAT' && (!!PANIMALAR_MATRIX[currentDayCode]?.[sfUpper] || !!savedPeriod);
+    const targetLabDay = PANIMALAR_LAB_DAYS[sfUpper] || 'FRI';
+    const isLabDayToday = (currentDayCode === targetLabDay);
 
-    if (hasClass) {
-      const key = `auto_class_email_sent_${todayStr}_${user.id || user.email}`;
+    if (isLabDayToday) {
+      const key = `auto_lab_email_sent_${todayStr}_${user.id || user.email}`;
       if (!sessionStorage.getItem(key)) {
         sessionStorage.setItem(key, 'true');
-        console.log("[Auto Email Notification] Automatically sending class schedule email to faculty...");
-        sendClassEmailAlert();
+        console.log(`[Auto Email Notification] Automatically sending Lab alert for ${sfUpper} (Lab Day: ${targetLabDay})...`);
+        sendClassEmailAlert(true);
       }
     }
   }, [user.id, user.email, subjectName, subjectCode]);
@@ -1305,64 +1309,31 @@ export default function FacultyDashboard() {
                     const currentDayCode = daysShort[new Date().getDay()];
                     const sfUpper = (savedShortForm || getSubjectShortForm(subjectName, undefined, subjectCode)).toUpperCase();
 
-                    const PANIMALAR_MATRIX: Record<string, Record<string, string>> = {
-                      MON: {
-                        KIES: 'Period 6 (1.15 PM - 1.55 PM)',
-                        FS: 'Period 1 (8.00 AM - 8.50 AM)',
-                        LIBRARY: 'Period 2 (8.50 AM - 9.40 AM)',
-                        DCNS: 'Period 3 (9.40 AM - 10.30 AM)',
-                        'TSP 4 LAB': 'Morning Lab Slot (10.45 AM - 12.40 PM)',
-                        'TS & R': 'Period 7 (1.55 PM - 2.35 PM)'
+                    const PANIMALAR_LAB_MATRIX: Record<string, Record<string, { period: string; tag: string }>> = {
+                      FRI: {
+                        KIES: { period: 'Period 2 & 3 Morning Lab Slot (8.50 AM - 10.30 AM)', tag: 'KIES LAB' },
+                        'KIES LAB': { period: 'Period 2 & 3 Morning Lab Slot (8.50 AM - 10.30 AM)', tag: 'KIES LAB' }
                       },
                       TUE: {
-                        DA: 'Period 1 (8.00 AM - 8.50 AM) & Period 7 (1.55 PM - 2.35 PM)',
-                        KIES: 'Period 2 (8.50 AM - 9.40 AM)',
-                        DCNS: 'Period 3 (9.40 AM - 10.30 AM)',
-                        'DA LAB': 'Morning Lab Slot (10.45 AM - 12.40 PM)',
-                        FS: 'Period 6 (1.15 PM - 1.55 PM)',
-                        DEV: 'Period 8 (2.35 PM - 3.15 PM)'
-                      },
-                      WED: {
-                        DEV: 'Period 1 (8.00 AM - 8.50 AM) & Period 8 (2.35 PM - 3.15 PM)',
-                        KIES: 'Period 2 (8.50 AM - 9.40 AM)',
-                        DA: 'Period 3 (9.40 AM - 10.30 AM) & Period 4 (10.45 AM - 11.40 AM)',
-                        FLAT: 'Period 5 (11.40 AM - 12.40 PM) & Period 6 (1.15 PM - 1.55 PM)',
-                        FS: 'Period 7 (1.55 PM - 2.35 PM)'
+                        DA: { period: 'Morning Lab Slot (10.45 AM - 12.40 PM)', tag: 'DA LAB' },
+                        'DA LAB': { period: 'Morning Lab Slot (10.45 AM - 12.40 PM)', tag: 'DA LAB' }
                       },
                       THU: {
-                        FLAT: 'Period 1 (8.00 AM - 8.50 AM) & Period 8 (2.35 PM - 3.15 PM)',
-                        DEV: 'Period 2 (8.50 AM - 9.40 AM)',
-                        KIES: 'Period 3 (9.40 AM - 10.30 AM)',
-                        'DEV LAB': 'Morning Lab Slot (10.45 AM - 12.40 PM)',
-                        DCNS: 'Period 6 (1.15 PM - 1.55 PM)',
-                        FS: 'Period 7 (1.55 PM - 2.35 PM)'
+                        DEV: { period: 'Morning Lab Slot (10.45 AM - 12.40 PM)', tag: 'DEV LAB' },
+                        'DEV LAB': { period: 'Morning Lab Slot (10.45 AM - 12.40 PM)', tag: 'DEV LAB' }
                       },
-                      FRI: {
-                        DCNS: 'Period 1 (8.00 AM - 8.50 AM)',
-                        'KIES LAB': 'Morning Lab Slot (8.50 AM - 10.30 AM)',
-                        KIES: 'Period 2 & 3 KIES LAB (8.50 AM - 10.30 AM) & Period 6 (1.15 PM - 1.55 PM)',
-                        FLAT: 'Period 4 (10.45 AM - 11.40 AM)',
-                        FS: 'Period 5 (11.40 AM - 12.40 PM)',
-                        DA: 'Period 7 (1.55 PM - 2.35 PM)',
-                        DEV: 'Period 8 (2.35 PM - 3.15 PM)'
+                      MON: {
+                        TSP: { period: 'Morning Lab Slot (10.45 AM - 12.40 PM)', tag: 'TSP 4 LAB' },
+                        'TSP 4 LAB': { period: 'Morning Lab Slot (10.45 AM - 12.40 PM)', tag: 'TSP 4 LAB' }
                       }
                     };
 
-                    let hasClass = false;
-                    let calculatedPeriod = '';
+                    const labInfo = PANIMALAR_LAB_MATRIX[currentDayCode]?.[sfUpper];
 
-                    if (currentDayCode !== 'SUN' && currentDayCode !== 'SAT' && PANIMALAR_MATRIX[currentDayCode]?.[sfUpper]) {
-                      hasClass = true;
-                      calculatedPeriod = PANIMALAR_MATRIX[currentDayCode][sfUpper];
-                    } else if (savedPeriod) {
-                      hasClass = true;
-                      calculatedPeriod = savedPeriod;
-                    }
-
-                    if (!hasClass) {
+                    if (!labInfo) {
                       return (
                         <span className="px-2.5 py-0.5 bg-slate-100 text-slate-500 rounded-md font-extrabold text-xs">
-                          No Class Scheduled Today
+                          No Lab Session Scheduled Today (KIES Lab Day is Friday)
                         </span>
                       );
                     }
@@ -1370,10 +1341,10 @@ export default function FacultyDashboard() {
                     return (
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="px-2 py-0.5 bg-amber-500/20 text-amber-900 border border-amber-400/40 rounded-md font-mono font-black text-xs">
-                          {savedShortForm}
+                          {labInfo.tag}
                         </span>
                         <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 font-extrabold rounded-md text-xs">
-                          {calculatedPeriod}
+                          {labInfo.period}
                         </span>
                         <span className="text-xs font-bold text-slate-600">• Section {selectedSection || 'Section F'}</span>
                       </div>
