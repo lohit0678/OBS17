@@ -1309,45 +1309,89 @@ export default function FacultyDashboard() {
                     const currentDayCode = daysShort[new Date().getDay()];
                     const sfUpper = (savedShortForm || getSubjectShortForm(subjectName, undefined, subjectCode)).toUpperCase();
 
-                    const PANIMALAR_LAB_MATRIX: Record<string, Record<string, { period: string; tag: string }>> = {
-                      FRI: {
-                        KIES: { period: 'Period 2 & 3 Morning Lab Slot (8.50 AM - 10.30 AM)', tag: 'KIES LAB' },
-                        'KIES LAB': { period: 'Period 2 & 3 Morning Lab Slot (8.50 AM - 10.30 AM)', tag: 'KIES LAB' }
+                    // Panimalar Master Matrix Lookup (Exact Lab vs Theory Period Breakdown)
+                    const PANIMALAR_FULL_MATRIX: Record<string, {
+                      labDay: string;
+                      labPeriod: string;
+                      labTag: string;
+                      theory: Record<string, string>;
+                    }> = {
+                      KIES: {
+                        labDay: 'FRI',
+                        labPeriod: 'Period 2 & 3 Morning Lab Slot (8.50 AM - 10.30 AM)',
+                        labTag: 'KIES LAB',
+                        theory: {
+                          MON: 'Period 6 (1.15 PM - 1.55 PM)',
+                          TUE: 'Period 2 (8.50 AM - 9.40 AM)',
+                          WED: 'Period 2 (8.50 AM - 9.40 AM)',
+                          THU: 'Period 3 (9.40 AM - 10.30 AM)',
+                          FRI: 'Period 6 (1.15 PM - 1.55 PM)'
+                        }
                       },
-                      TUE: {
-                        DA: { period: 'Morning Lab Slot (10.45 AM - 12.40 PM)', tag: 'DA LAB' },
-                        'DA LAB': { period: 'Morning Lab Slot (10.45 AM - 12.40 PM)', tag: 'DA LAB' }
+                      DA: {
+                        labDay: 'TUE',
+                        labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
+                        labTag: 'DA LAB',
+                        theory: {
+                          TUE: 'Period 1 (8.00 AM - 8.50 AM) & Period 7 (1.55 PM - 2.35 PM)',
+                          WED: 'Period 3 (9.40 AM - 10.30 AM) & Period 4 (10.45 AM - 11.40 AM)',
+                          FRI: 'Period 7 (1.55 PM - 2.35 PM)'
+                        }
                       },
-                      THU: {
-                        DEV: { period: 'Morning Lab Slot (10.45 AM - 12.40 PM)', tag: 'DEV LAB' },
-                        'DEV LAB': { period: 'Morning Lab Slot (10.45 AM - 12.40 PM)', tag: 'DEV LAB' }
+                      DEV: {
+                        labDay: 'THU',
+                        labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
+                        labTag: 'DEV LAB',
+                        theory: {
+                          WED: 'Period 1 (8.00 AM - 8.50 AM) & Period 8 (2.35 PM - 3.15 PM)',
+                          THU: 'Period 2 (8.50 AM - 9.40 AM)',
+                          FRI: 'Period 8 (2.35 PM - 3.15 PM)'
+                        }
                       },
-                      MON: {
-                        TSP: { period: 'Morning Lab Slot (10.45 AM - 12.40 PM)', tag: 'TSP 4 LAB' },
-                        'TSP 4 LAB': { period: 'Morning Lab Slot (10.45 AM - 12.40 PM)', tag: 'TSP 4 LAB' }
+                      TSP: {
+                        labDay: 'MON',
+                        labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
+                        labTag: 'TSP 4 LAB',
+                        theory: {}
                       }
                     };
 
-                    const labInfo = PANIMALAR_LAB_MATRIX[currentDayCode]?.[sfUpper];
+                    const matrixEntry = PANIMALAR_FULL_MATRIX[sfUpper] || PANIMALAR_FULL_MATRIX['KIES'];
+                    const isLabDay = (currentDayCode === matrixEntry.labDay);
+                    const theoryPeriod = matrixEntry.theory[currentDayCode];
 
-                    if (!labInfo) {
+                    if (isLabDay) {
                       return (
-                        <span className="px-2.5 py-0.5 bg-slate-100 text-slate-500 rounded-md font-extrabold text-xs">
-                          No Lab Session Scheduled Today (KIES Lab Day is Friday)
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="px-2 py-0.5 bg-amber-500/20 text-amber-900 border border-amber-400/40 rounded-md font-mono font-black text-xs animate-pulse">
+                            🧪 {matrixEntry.labTag}
+                          </span>
+                          <span className="px-2.5 py-0.5 bg-indigo-100 text-indigo-900 font-black rounded-md text-xs">
+                            {savedPeriod || matrixEntry.labPeriod}
+                          </span>
+                          <span className="text-xs font-bold text-slate-600">• Section {selectedSection || 'Section F'}</span>
+                        </div>
+                      );
+                    }
+
+                    if (theoryPeriod) {
+                      return (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="px-2 py-0.5 bg-blue-100 text-blue-900 border border-blue-300 rounded-md font-mono font-black text-xs">
+                            📖 {savedShortForm} (Theory)
+                          </span>
+                          <span className="px-2.5 py-0.5 bg-slate-100 text-slate-800 font-bold rounded-md text-xs">
+                            {theoryPeriod}
+                          </span>
+                          <span className="text-xs font-bold text-slate-600">• Section {selectedSection || 'Section F'}</span>
+                        </div>
                       );
                     }
 
                     return (
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="px-2 py-0.5 bg-amber-500/20 text-amber-900 border border-amber-400/40 rounded-md font-mono font-black text-xs">
-                          {labInfo.tag}
-                        </span>
-                        <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 font-extrabold rounded-md text-xs">
-                          {labInfo.period}
-                        </span>
-                        <span className="text-xs font-bold text-slate-600">• Section {selectedSection || 'Section F'}</span>
-                      </div>
+                      <span className="px-2.5 py-0.5 bg-slate-100 text-slate-500 rounded-md font-extrabold text-xs">
+                        No Class/Lab Session Scheduled Today
+                      </span>
                     );
                   })()}
                 </div>
