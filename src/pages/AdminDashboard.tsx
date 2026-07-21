@@ -20,7 +20,8 @@ const DAYS_OF_WEEK    = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday',
 const SEMESTER_OPTIONS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface Batch  { id: string; name: string; year: string; department: string; isActive: boolean; }
+interface SubjectItem { id: string; name: string; code: string; shortForm: string; }
+interface Batch  { id: string; name: string; year: string; department: string; isActive: boolean; subjects?: SubjectItem[]; }
 interface Section { id: string; batchId: string; name: string; timetableStructureId: string; timetable?: any[]; }
 interface ParsedTimetableRow { day: string; period: string; subject: string; faculty: string; }
 
@@ -736,6 +737,57 @@ function BatchesTab({ batches, sections, faculties = [], setBatches, setSections
   const [toast, setToast] = useState<{ msg: string; type: 'success'|'error' } | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const [showAddSubjectForm, setShowAddSubjectForm] = useState<string | null>(null); // batchId
+  const [newSubjectForm, setNewSubjectForm] = useState({ name: '', code: '', shortForm: '' });
+  const [customSubjectsMap, setCustomSubjectsMap] = useState<Record<string, SubjectItem[]>>(() => {
+    try {
+      const stored = localStorage.getItem('custom_batch_subjects_map');
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleAddSubjectToBatch = (e: React.FormEvent, batchId: string) => {
+    e.preventDefault();
+    if (!newSubjectForm.name || !newSubjectForm.code || !newSubjectForm.shortForm) {
+      setToast({ msg: 'Subject Name, Code, and Short Form are required', type: 'error' });
+      return;
+    }
+
+    const newItem: SubjectItem = {
+      id: `subj-${Date.now()}`,
+      name: newSubjectForm.name.trim(),
+      code: newSubjectForm.code.trim().toUpperCase(),
+      shortForm: newSubjectForm.shortForm.trim().toUpperCase(),
+    };
+
+    setCustomSubjectsMap(prev => {
+      const updated = {
+        ...prev,
+        [batchId]: [...(prev[batchId] || []), newItem],
+      };
+      localStorage.setItem('custom_batch_subjects_map', JSON.stringify(updated));
+      return updated;
+    });
+
+    setNewSubjectForm({ name: '', code: '', shortForm: '' });
+    setShowAddSubjectForm(null);
+    setToast({ msg: `Subject "${newItem.shortForm}" added to batch!`, type: 'success' });
+  };
+
+  const handleDeleteSubjectFromBatch = (batchId: string, subjectId: string) => {
+    setCustomSubjectsMap(prev => {
+      const updated = {
+        ...prev,
+        [batchId]: (prev[batchId] || []).filter(s => s.id !== subjectId),
+      };
+      localStorage.setItem('custom_batch_subjects_map', JSON.stringify(updated));
+      return updated;
+    });
+    setToast({ msg: 'Subject removed', type: 'success' });
+  };
+
   const [batchForm, setBatchForm] = useState({ name: '', year: '', department: '' });
   const [sectionForm, setSectionForm] = useState({ name: '' });
 
@@ -1007,30 +1059,124 @@ function BatchesTab({ batches, sections, faculties = [], setBatches, setSections
                 )}
 
                 {/* Subjects & Timetable Short Forms Reference Card */}
-                <div className="p-4 bg-slate-50 border-t border-slate-100 space-y-2.5">
+                <div className="p-4 bg-slate-50 border-t border-slate-100 space-y-3">
                   <div className="flex items-center justify-between">
                     <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                       <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" />
                       <span>Handling Subjects & Timetable Short Forms</span>
                     </h4>
-                    <span className="text-[10px] text-slate-400 font-bold">Matches short forms in college timetable images</span>
+                    <button
+                      onClick={() => setShowAddSubjectForm(showAddSubjectForm === batch.id ? null : batch.id)}
+                      className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-extrabold rounded-lg flex items-center gap-1 transition cursor-pointer shadow-xs active:scale-95"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Add Subject</span>
+                    </button>
                   </div>
 
+                  {/* Create Subject Inline Form */}
+                  {showAddSubjectForm === batch.id && (
+                    <div className="bg-white p-4 rounded-2xl border border-indigo-200 shadow-sm space-y-3 animate-fade-in">
+                      <h5 className="text-xs font-black text-indigo-800 uppercase tracking-wide">Add New Subject for {batch.name}</h5>
+                      <form onSubmit={(e) => handleAddSubjectToBatch(e, batch.id)} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-[10px] font-extrabold text-slate-500 uppercase block mb-1">Subject Name <span className="text-red-500">*</span></label>
+                          <input
+                            type="text"
+                            value={newSubjectForm.name}
+                            onChange={e => {
+                              const val = e.target.value;
+                              const autoShort = getSubjectShortForm(val);
+                              setNewSubjectForm(p => ({ ...p, name: val, shortForm: p.shortForm ? p.shortForm : autoShort }));
+                            }}
+                            placeholder="e.g. Knowledge Engineering and Intelligent Systems"
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-extrabold text-slate-500 uppercase block mb-1">Subject Code <span className="text-red-500">*</span></label>
+                          <input
+                            type="text"
+                            value={newSubjectForm.code}
+                            onChange={e => setNewSubjectForm(p => ({ ...p, code: e.target.value.toUpperCase() }))}
+                            placeholder="e.g. 23AD1507"
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-extrabold text-slate-500 uppercase block mb-1">Short Form (Timetable Tag) <span className="text-red-500">*</span></label>
+                          <input
+                            type="text"
+                            value={newSubjectForm.shortForm}
+                            onChange={e => setNewSubjectForm(p => ({ ...p, shortForm: e.target.value.toUpperCase() }))}
+                            placeholder="e.g. KIES"
+                            className="w-full px-3 py-2 bg-amber-50/50 border border-amber-300 rounded-xl text-xs font-mono font-black text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            required
+                          />
+                        </div>
+                        <div className="sm:col-span-3 flex justify-end gap-2 pt-1 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => setShowAddSubjectForm(null)}
+                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-xl cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl cursor-pointer flex items-center gap-1 shadow-sm"
+                          >
+                            <Check className="w-3.5 h-3.5" /> Save Subject
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  )}
+
                   {(() => {
+                    const customList = customSubjectsMap[batch.id] || [];
                     const batchFaculties = faculties.filter((f: any) => {
                       if (f.batchId === batch.id || f.batch === batch.name) return true;
                       if (f.department === batch.department) return true;
                       return false;
                     });
 
-                    if (batchFaculties.length === 0) {
+                    if (customList.length === 0 && batchFaculties.length === 0) {
                       return (
-                        <p className="text-[11px] text-slate-400 italic">No faculty / subjects assigned to this department yet.</p>
+                        <p className="text-[11px] text-slate-400 italic">No subjects added yet. Click "+ Add Subject" above to create one.</p>
                       );
                     }
 
                     return (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+                        {/* Custom added subjects */}
+                        {customList.map((cs) => (
+                          <div key={cs.id} className="bg-white p-3 rounded-xl border border-indigo-200/80 shadow-2xs flex flex-col justify-between space-y-1.5 relative group">
+                            <div className="flex items-center justify-between gap-1.5">
+                              <span className="px-2 py-0.5 bg-amber-500/20 text-amber-900 border border-amber-500/30 rounded-md font-mono font-black text-xs shadow-2xs">
+                                {cs.shortForm}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <span className="font-mono text-[10px] text-indigo-600 font-extrabold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">{cs.code}</span>
+                                <button
+                                  onClick={() => handleDeleteSubjectFromBatch(batch.id, cs.id)}
+                                  className="text-slate-300 hover:text-red-500 p-0.5 transition cursor-pointer"
+                                  title="Delete Subject"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                            <div>
+                              <p className="font-extrabold text-slate-900 text-xs truncate" title={cs.name}>{cs.name}</p>
+                              <p className="text-[10px] text-emerald-600 font-bold mt-0.5">Custom Batch Subject</p>
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Faculty assigned subjects */}
                         {batchFaculties.map((f: any, fIdx: number) => {
                           const subName = f.subjectName || (Array.isArray(f.subjectsHandled) && f.subjectsHandled[0]) || f.subject || 'Subject';
                           const subCode = f.subjectCode || '—';
