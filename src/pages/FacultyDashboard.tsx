@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
 import { useAcademicData } from '../context/AcademicDataContext';
+import { getSubjectShortForm } from './AdminDashboard';
 import { 
   BarChart, 
   Bar, 
@@ -1123,16 +1124,38 @@ export default function FacultyDashboard() {
                   </span>
                 </h4>
                 <div className="mt-2 space-y-1.5">
-                  {todaySessions.map((slot: any, i: number) => (
-                    <div key={i} className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className="px-2 py-0.5 bg-amber-200/60 text-amber-900 rounded-lg font-bold">{slot.time}</span>
-                      <span className="font-bold text-slate-700">{slot.lab || 'Lab Session'}</span>
-                      <span className="text-slate-400">&bull;</span>
-                      <span className="text-slate-600">Batch: <strong>{slot.batch}</strong></span>
-                      <span className="text-slate-400">&bull;</span>
-                      <span className="text-slate-600">Room: <strong>{slot.room}</strong></span>
-                    </div>
-                  ))}
+                  {(() => {
+                    const savedRaw = localStorage.getItem(`faculty_timetable_${user.id}`) || localStorage.getItem(`faculty_timetable_${user.email}`) || null;
+                    let savedPeriod: string | null = null;
+                    let savedShortForm: string | null = null;
+                    if (savedRaw) {
+                      try {
+                        const parsed = JSON.parse(savedRaw);
+                        if (parsed && typeof parsed === 'object') {
+                          savedPeriod = parsed.period || null;
+                          savedShortForm = parsed.subjectShortForm || null;
+                        }
+                      } catch { /* silent */ }
+                    }
+
+                    return todaySessions.map((slot: any, i: number) => (
+                      <div key={i} className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="px-2 py-0.5 bg-amber-200/60 text-amber-900 rounded-lg font-bold">
+                          {savedPeriod || slot.time}
+                        </span>
+                        {savedShortForm && (
+                          <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-lg font-mono font-black text-[11px]">
+                            {savedShortForm}
+                          </span>
+                        )}
+                        <span className="font-bold text-slate-700">{slot.lab || 'Lab Session'}</span>
+                        <span className="text-slate-400">&bull;</span>
+                        <span className="text-slate-600">Batch: <strong>{slot.batch}</strong></span>
+                        <span className="text-slate-400">&bull;</span>
+                        <span className="text-slate-600">Room: <strong>{slot.room}</strong></span>
+                      </div>
+                    ));
+                  })()}
                 </div>
                 <p className="text-[10px] text-amber-600 mt-2 font-medium">
                   Browser notifications enabled • You will be alerted for upcoming sessions.
@@ -2949,14 +2972,55 @@ export default function FacultyDashboard() {
 
             <div className="p-6 overflow-y-auto">
               {(() => {
-                const savedImg = localStorage.getItem(`faculty_timetable_${user.id}`) || localStorage.getItem(`faculty_timetable_${user.email}`) || facultyData.timetableImage || null;
+                const savedRaw = localStorage.getItem(`faculty_timetable_${user.id}`) || localStorage.getItem(`faculty_timetable_${user.email}`) || null;
+                let savedImg: string | null = null;
+                let savedPeriod: string | null = null;
+                let savedShortForm: string | null = null;
+
+                if (savedRaw) {
+                  try {
+                    const parsed = JSON.parse(savedRaw);
+                    if (parsed && typeof parsed === 'object' && parsed.image) {
+                      savedImg = parsed.image;
+                      savedPeriod = parsed.period || null;
+                      savedShortForm = parsed.subjectShortForm || null;
+                    } else {
+                      savedImg = savedRaw;
+                    }
+                  } catch {
+                    savedImg = savedRaw;
+                  }
+                } else if (facultyData.timetableImage) {
+                  savedImg = facultyData.timetableImage;
+                }
+
                 if (savedImg) {
                   return (
                     <div className="space-y-4">
+                      {/* Banner with Subject Short Form & Period */}
+                      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-500 font-bold uppercase text-[10px]">Timetable Tag (Short Form):</span>
+                          <span className="px-2.5 py-1 bg-amber-500/20 text-amber-900 border border-amber-500/30 rounded-lg font-mono font-black text-xs">
+                            {savedShortForm || getSubjectShortForm(subjectName, undefined, subjectCode)}
+                          </span>
+                        </div>
+                        {savedPeriod && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-500 font-bold uppercase text-[10px]">Assigned Period / Schedule:</span>
+                            <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg font-extrabold text-xs">
+                              {savedPeriod}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
                       <div className="bg-slate-900 p-3 rounded-2xl border border-slate-800 flex justify-center items-center overflow-hidden max-h-[520px] shadow-lg">
                         <img src={savedImg} alt="My Subject Timetable Schedule" className="max-h-[500px] w-auto object-contain rounded-xl" />
                       </div>
-                      <p className="text-xs text-slate-500 text-center font-medium">Assigned by HOD for your handling subject ({subjectName})</p>
+                      <p className="text-xs text-slate-500 text-center font-medium">
+                        Assigned by HOD for handling subject: <strong>{subjectName} ({subjectCode})</strong>
+                      </p>
                     </div>
                   );
                 }

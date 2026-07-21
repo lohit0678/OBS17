@@ -1930,6 +1930,8 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
   const [monitoringModal,   setMonitoringModal]   = useState<any | null>(null);
   const [timetableModalFaculty, setTimetableModalFaculty] = useState<any | null>(null);
   const [timetableImagePreview, setTimetableImagePreview] = useState<string | null>(null);
+  const [selectedTimetablePeriod, setSelectedTimetablePeriod] = useState<string>('Period 1 (8:30 AM - 9:30 AM)');
+  const [selectedSubjectShortForm, setSelectedSubjectShortForm] = useState<string>('');
   const [showAddForm,       setShowAddForm]       = useState(false);
   const [toast,             setToast]             = useState<{ msg: string; type: 'success'|'error' } | null>(null);
   const [saving,            setSaving]            = useState(false);
@@ -2135,8 +2137,31 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => {
-                              const savedImg = localStorage.getItem(`faculty_timetable_${f.id}`) || localStorage.getItem(`faculty_timetable_${f.email}`) || f.timetableImage || null;
+                              const savedRaw = localStorage.getItem(`faculty_timetable_${f.id}`) || localStorage.getItem(`faculty_timetable_${f.email}`) || null;
+                              let savedImg: string | null = null;
+                              let savedPeriod = 'Period 1 (8:30 AM - 9:30 AM)';
+                              let savedShortForm = getSubjectShortForm(f.subjectName || f.subject, f.subjectShortForm, f.subjectCode);
+
+                              if (savedRaw) {
+                                try {
+                                  const parsed = JSON.parse(savedRaw);
+                                  if (parsed && typeof parsed === 'object' && parsed.image) {
+                                    savedImg = parsed.image;
+                                    if (parsed.period) savedPeriod = parsed.period;
+                                    if (parsed.subjectShortForm) savedShortForm = parsed.subjectShortForm;
+                                  } else {
+                                    savedImg = savedRaw;
+                                  }
+                                } catch {
+                                  savedImg = savedRaw;
+                                }
+                              } else if (f.timetableImage) {
+                                savedImg = f.timetableImage;
+                              }
+
                               setTimetableImagePreview(savedImg);
+                              setSelectedTimetablePeriod(savedPeriod);
+                              setSelectedSubjectShortForm(savedShortForm);
                               setTimetableModalFaculty(f);
                             }}
                             title="Assign/Upload Subject Timetable Image for this Faculty Member"
@@ -2255,6 +2280,55 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
               </div>
             </div>
 
+            {/* Subject Tag & Period Selection Controls */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+              <div>
+                <label className="text-[10px] font-black text-slate-600 uppercase tracking-wide block mb-1">
+                  Assign Subject Short Form (From Timetable Image)
+                </label>
+                <select
+                  value={selectedSubjectShortForm || getSubjectShortForm(timetableModalFaculty.subjectName || timetableModalFaculty.subject, timetableModalFaculty.subjectShortForm, timetableModalFaculty.subjectCode)}
+                  onChange={(e) => setSelectedSubjectShortForm(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-black text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                >
+                  <option value={getSubjectShortForm(timetableModalFaculty.subjectName || timetableModalFaculty.subject, timetableModalFaculty.subjectShortForm, timetableModalFaculty.subjectCode)}>
+                    {getSubjectShortForm(timetableModalFaculty.subjectName || timetableModalFaculty.subject, timetableModalFaculty.subjectShortForm, timetableModalFaculty.subjectCode)} — Primary Subject
+                  </option>
+                  {(() => {
+                    try {
+                      const map = JSON.parse(localStorage.getItem('custom_batch_subjects_map') || '{}');
+                      const allSubs: SubjectItem[] = Object.values(map).flat() as SubjectItem[];
+                      return allSubs.map((cs) => (
+                        <option key={cs.id} value={cs.shortForm}>
+                          {cs.shortForm} — {cs.name} ({cs.code})
+                        </option>
+                      ));
+                    } catch {
+                      return null;
+                    }
+                  })()}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-600 uppercase tracking-wide block mb-1">
+                  Select Timetable Period / Session Timings
+                </label>
+                <select
+                  value={selectedTimetablePeriod}
+                  onChange={(e) => setSelectedTimetablePeriod(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                >
+                  <option value="Period 1 (8:30 AM - 9:30 AM)">Period 1 (8:30 AM – 9:30 AM)</option>
+                  <option value="Period 2 (9:30 AM - 10:30 AM)">Period 2 (9:30 AM – 10:30 AM)</option>
+                  <option value="Period 3 (10:45 AM - 11:45 AM)">Period 3 (10:45 AM – 11:45 AM)</option>
+                  <option value="Period 4 (11:45 AM - 12:45 PM)">Period 4 (11:45 AM – 12:45 PM)</option>
+                  <option value="Period 5 (1:30 PM - 2:30 PM)">Period 5 (1:30 PM – 2:30 PM)</option>
+                  <option value="Period 6 (2:30 PM - 3:30 PM)">Period 6 (2:30 PM – 3:30 PM)</option>
+                  <option value="Full Day Session / Lab Block">Full Day Session / Lab Block (8:30 AM – 3:30 PM)</option>
+                </select>
+              </div>
+            </div>
+
             {/* Upload & Preview Section */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -2277,9 +2351,18 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
                       reader.onloadend = () => {
                         const base64 = reader.result as string;
                         setTimetableImagePreview(base64);
-                        localStorage.setItem(`faculty_timetable_${timetableModalFaculty.id}`, base64);
-                        localStorage.setItem(`faculty_timetable_${timetableModalFaculty.email}`, base64);
-                        alert(`Timetable image assigned successfully for ${timetableModalFaculty.name || 'Faculty'}!`);
+                        const sf = selectedSubjectShortForm || getSubjectShortForm(timetableModalFaculty.subjectName || timetableModalFaculty.subject, timetableModalFaculty.subjectShortForm, timetableModalFaculty.subjectCode);
+                        const payload = JSON.stringify({
+                          image: base64,
+                          subjectShortForm: sf,
+                          period: selectedTimetablePeriod,
+                          subjectName: timetableModalFaculty.subjectName || timetableModalFaculty.subject,
+                          subjectCode: timetableModalFaculty.subjectCode,
+                          updatedAt: new Date().toISOString()
+                        });
+                        localStorage.setItem(`faculty_timetable_${timetableModalFaculty.id}`, payload);
+                        localStorage.setItem(`faculty_timetable_${timetableModalFaculty.email}`, payload);
+                        alert(`Timetable image assigned successfully for ${timetableModalFaculty.name || 'Faculty'} (${sf} - ${selectedTimetablePeriod})!`);
                       };
                       reader.readAsDataURL(file);
                     }}
