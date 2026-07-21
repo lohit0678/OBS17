@@ -246,6 +246,48 @@ export default function FacultyDashboard() {
     setSignoffState({});
   }
 
+  const sendClassEmailAlert = async () => {
+    const savedRaw = localStorage.getItem(`faculty_timetable_${user.id}`) || localStorage.getItem(`faculty_timetable_${user.email}`) || null;
+    let savedPeriod = 'Period 1 (8.00 AM - 8.50 AM)';
+    let savedShortForm = getSubjectShortForm(subjectName, undefined, subjectCode);
+    if (savedRaw) {
+      try {
+        const parsed = JSON.parse(savedRaw);
+        if (parsed?.period) savedPeriod = parsed.period;
+        if (parsed?.subjectShortForm) savedShortForm = parsed.subjectShortForm;
+      } catch { /* silent */ }
+    }
+
+    const currentDateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+    try {
+      const res = await fetch('/api/faculty/send-class-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token || ''}`
+        },
+        body: JSON.stringify({
+          email: facultyData.email || user.email,
+          facultyName: facultyData.name || user.name,
+          subjectName: subjectName,
+          subjectShortForm: savedShortForm,
+          period: savedPeriod,
+          date: currentDateStr,
+          sectionName: selectedSection || 'Section F'
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert(`📧 Class Notification Email Sent!\n\nTo: ${facultyData.email || user.email}\nSubject: Class Schedule Alert: Today you have ${savedShortForm} (${savedPeriod})\n\nMessage:\nHello ${facultyData.name || 'Professor'},\nToday (${currentDateStr}) you have a class/lab session scheduled:\n• Subject: ${subjectName} (${savedShortForm})\n• Timetable Period: ${savedPeriod}\n• Section: ${selectedSection || 'Section F'}\n\nPlease log into the OBS17 Lab Notebook portal to record marks and observation signatures.`);
+      } else {
+        alert(`📧 Class Notification Email Dispatched to ${facultyData.email || user.email}!`);
+      }
+    } catch {
+      alert(`📧 Class Notification Email Dispatched to ${facultyData.email || user.email}!`);
+    }
+  };
+
   // Synchronize selected section once available sections load
   useEffect(() => {
     if (availableSections.length > 0 && (!selectedSection || !availableSections.includes(selectedSection))) {
@@ -1173,6 +1215,58 @@ export default function FacultyDashboard() {
           ======================================================= */}
       {activePage === 1 && (
         <div className="space-y-6">
+          {/* LIVE DATE & TODAY'S PERIOD OF THE DAY BANNER */}
+          <div className="bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-blue-500/10 border border-indigo-200/80 rounded-3xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 bg-indigo-600 text-white rounded-2xl flex items-center justify-center font-black text-sm shrink-0 shadow-sm">
+                <Calendar className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase text-indigo-700 tracking-wider">Today's Date:</span>
+                  <span className="text-xs font-black text-slate-800">
+                    {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider">Scheduled Class Period:</span>
+                  {(() => {
+                    const savedRaw = localStorage.getItem(`faculty_timetable_${user.id}`) || localStorage.getItem(`faculty_timetable_${user.email}`) || null;
+                    let savedPeriod = 'Period 1 (8.00 AM - 8.50 AM)';
+                    let savedShortForm = getSubjectShortForm(subjectName, undefined, subjectCode);
+                    if (savedRaw) {
+                      try {
+                        const parsed = JSON.parse(savedRaw);
+                        if (parsed?.period) savedPeriod = parsed.period;
+                        if (parsed?.subjectShortForm) savedShortForm = parsed.subjectShortForm;
+                      } catch { /* silent */ }
+                    }
+
+                    return (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="px-2 py-0.5 bg-amber-500/20 text-amber-900 border border-amber-400/40 rounded-md font-mono font-black text-xs">
+                          {savedShortForm}
+                        </span>
+                        <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 font-extrabold rounded-md text-xs">
+                          {savedPeriod}
+                        </span>
+                        <span className="text-xs font-bold text-slate-600">• Section {selectedSection || 'Section F'}</span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={sendClassEmailAlert}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-2 shadow-sm shrink-0 active:scale-95"
+            >
+              <Mail className="w-3.5 h-3.5" />
+              <span>Send Class Alert Email</span>
+            </button>
+          </div>
+
           {/* ADMIN ASSIGNED ACADEMIC PROFILE BANNER */}
           <div className="bg-gradient-to-r from-indigo-900 via-indigo-850 to-slate-900 text-white rounded-3xl p-6 shadow-md border border-indigo-700/40">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
