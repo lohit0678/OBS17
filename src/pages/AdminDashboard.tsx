@@ -1137,15 +1137,10 @@ function BatchesTab({ batches, sections, faculties = [], setBatches, setSections
 
                   {(() => {
                     const customList = customSubjectsMap[batch.id] || [];
-                    const batchFaculties = faculties.filter((f: any) => {
-                      if (f.batchId === batch.id || f.batch === batch.name) return true;
-                      if (f.department === batch.department) return true;
-                      return false;
-                    });
 
-                    if (customList.length === 0 && batchFaculties.length === 0) {
+                    if (customList.length === 0) {
                       return (
-                        <p className="text-[11px] text-slate-400 italic">No subjects added yet. Click "+ Add Subject" above to create one.</p>
+                        <p className="text-[11px] text-slate-400 italic">No custom subjects added yet. Click "+ Add Subject" above to create subjects with short forms.</p>
                       );
                     }
 
@@ -1171,32 +1166,10 @@ function BatchesTab({ batches, sections, faculties = [], setBatches, setSections
                             </div>
                             <div>
                               <p className="font-extrabold text-slate-900 text-xs truncate" title={cs.name}>{cs.name}</p>
-                              <p className="text-[10px] text-emerald-600 font-bold mt-0.5">Custom Batch Subject</p>
+                              <p className="text-[10px] text-emerald-600 font-bold mt-0.5">Batch Subject</p>
                             </div>
                           </div>
                         ))}
-
-                        {/* Faculty assigned subjects */}
-                        {batchFaculties.map((f: any, fIdx: number) => {
-                          const subName = f.subjectName || (Array.isArray(f.subjectsHandled) && f.subjectsHandled[0]) || f.subject || 'Subject';
-                          const subCode = f.subjectCode || '—';
-                          const shortForm = getSubjectShortForm(subName, f.subjectShortForm, subCode);
-
-                          return (
-                            <div key={f.id || fIdx} className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs flex flex-col justify-between space-y-1.5">
-                              <div className="flex items-center justify-between gap-1.5">
-                                <span className="px-2 py-0.5 bg-amber-500/20 text-amber-900 border border-amber-500/30 rounded-md font-mono font-black text-xs shadow-2xs">
-                                  {shortForm}
-                                </span>
-                                <span className="font-mono text-[10px] text-indigo-600 font-extrabold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">{subCode}</span>
-                              </div>
-                              <div>
-                                <p className="font-extrabold text-slate-900 text-xs truncate" title={subName}>{subName}</p>
-                                <p className="text-[10px] text-slate-500 font-medium truncate mt-0.5">Faculty: <strong className="text-slate-700">{f.name || f.email}</strong></p>
-                              </div>
-                            </div>
-                          );
-                        })}
                       </div>
                     );
                   })()}
