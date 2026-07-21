@@ -248,7 +248,7 @@ export default function FacultyDashboard() {
 
   const sendClassEmailAlert = async () => {
     const savedRaw = localStorage.getItem(`faculty_timetable_${user.id}`) || localStorage.getItem(`faculty_timetable_${user.email}`) || null;
-    let savedPeriod = 'Period 1 (8.00 AM - 8.50 AM)';
+    let savedPeriod: string | null = null;
     let savedShortForm = getSubjectShortForm(subjectName, undefined, subjectCode);
     if (savedRaw) {
       try {
@@ -256,6 +256,25 @@ export default function FacultyDashboard() {
         if (parsed?.period) savedPeriod = parsed.period;
         if (parsed?.subjectShortForm) savedShortForm = parsed.subjectShortForm;
       } catch { /* silent */ }
+    }
+
+    const daysShort = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    const currentDayCode = daysShort[new Date().getDay()];
+    const sfUpper = (savedShortForm || getSubjectShortForm(subjectName, undefined, subjectCode)).toUpperCase();
+
+    const PANIMALAR_MATRIX: Record<string, Record<string, string>> = {
+      MON: { KIES: 'Period 6 (1.15 PM - 1.55 PM)' },
+      TUE: { KIES: 'Period 2 (8.50 AM - 9.40 AM)' },
+      WED: { KIES: 'Period 2 (8.50 AM - 9.40 AM)' },
+      THU: { KIES: 'Period 3 (9.40 AM - 10.30 AM)' },
+      FRI: { KIES: 'Period 2 & 3 KIES LAB (8.50 AM - 10.30 AM) & Period 6 (1.15 PM - 1.55 PM)' }
+    };
+
+    let calculatedPeriod = 'Period 1 (8.00 AM - 8.50 AM)';
+    if (PANIMALAR_MATRIX[currentDayCode]?.[sfUpper]) {
+      calculatedPeriod = PANIMALAR_MATRIX[currentDayCode][sfUpper];
+    } else if (savedPeriod) {
+      calculatedPeriod = savedPeriod;
     }
 
     const currentDateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
@@ -272,14 +291,14 @@ export default function FacultyDashboard() {
           facultyName: facultyData.name || user.name,
           subjectName: subjectName,
           subjectShortForm: savedShortForm,
-          period: savedPeriod,
+          period: calculatedPeriod,
           date: currentDateStr,
           sectionName: selectedSection || 'Section F'
         })
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        alert(`📧 Class Notification Email Sent!\n\nTo: ${facultyData.email || user.email}\nSubject: Class Schedule Alert: Today you have ${savedShortForm} (${savedPeriod})\n\nMessage:\nHello ${facultyData.name || 'Professor'},\nToday (${currentDateStr}) you have a class/lab session scheduled:\n• Subject: ${subjectName} (${savedShortForm})\n• Timetable Period: ${savedPeriod}\n• Section: ${selectedSection || 'Section F'}\n\nPlease log into the OBS17 Lab Notebook portal to record marks and observation signatures.`);
+        alert(`📧 Class Notification Email Sent!\n\nTo: ${facultyData.email || user.email}\nSubject: Class Schedule Alert: Today you have ${savedShortForm} (${calculatedPeriod})\n\nMessage:\nHello ${facultyData.name || 'Professor'},\nToday (${currentDateStr}) you have a class/lab session scheduled:\n• Subject: ${subjectName} (${savedShortForm})\n• Timetable Period: ${calculatedPeriod}\n• Section: ${selectedSection || 'Section F'}\n\nPlease log into the OBS17 Lab Notebook portal to record marks and observation signatures.`);
       } else {
         alert(`📧 Class Notification Email Dispatched to ${facultyData.email || user.email}!`);
       }
@@ -1232,7 +1251,7 @@ export default function FacultyDashboard() {
                   <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider">Scheduled Class Period:</span>
                   {(() => {
                     const savedRaw = localStorage.getItem(`faculty_timetable_${user.id}`) || localStorage.getItem(`faculty_timetable_${user.email}`) || null;
-                    let savedPeriod = 'Period 1 (8.00 AM - 8.50 AM)';
+                    let savedPeriod: string | null = null;
                     let savedShortForm = getSubjectShortForm(subjectName, undefined, subjectCode);
                     if (savedRaw) {
                       try {
@@ -1242,13 +1261,69 @@ export default function FacultyDashboard() {
                       } catch { /* silent */ }
                     }
 
+                    const daysShort = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+                    const currentDayCode = daysShort[new Date().getDay()];
+                    const sfUpper = (savedShortForm || getSubjectShortForm(subjectName, undefined, subjectCode)).toUpperCase();
+
+                    const PANIMALAR_MATRIX: Record<string, Record<string, string>> = {
+                      MON: {
+                        KIES: 'Period 6 (1.15 PM - 1.55 PM)',
+                        FS: 'Period 1 (8.00 AM - 8.50 AM)',
+                        LIBRARY: 'Period 2 (8.50 AM - 9.40 AM)',
+                        DCNS: 'Period 3 (9.40 AM - 10.30 AM)',
+                        'TSP 4 LAB': 'Morning Lab Slot (10.45 AM - 12.40 PM)',
+                        'TS & R': 'Period 7 (1.55 PM - 2.35 PM)'
+                      },
+                      TUE: {
+                        DA: 'Period 1 (8.00 AM - 8.50 AM) & Period 7 (1.55 PM - 2.35 PM)',
+                        KIES: 'Period 2 (8.50 AM - 9.40 AM)',
+                        DCNS: 'Period 3 (9.40 AM - 10.30 AM)',
+                        'DA LAB': 'Morning Lab Slot (10.45 AM - 12.40 PM)',
+                        FS: 'Period 6 (1.15 PM - 1.55 PM)',
+                        DEV: 'Period 8 (2.35 PM - 3.15 PM)'
+                      },
+                      WED: {
+                        DEV: 'Period 1 (8.00 AM - 8.50 AM) & Period 8 (2.35 PM - 3.15 PM)',
+                        KIES: 'Period 2 (8.50 AM - 9.40 AM)',
+                        DA: 'Period 3 (9.40 AM - 10.30 AM) & Period 4 (10.45 AM - 11.40 AM)',
+                        FLAT: 'Period 5 (11.40 AM - 12.40 PM) & Period 6 (1.15 PM - 1.55 PM)',
+                        FS: 'Period 7 (1.55 PM - 2.35 PM)'
+                      },
+                      THU: {
+                        FLAT: 'Period 1 (8.00 AM - 8.50 AM) & Period 8 (2.35 PM - 3.15 PM)',
+                        DEV: 'Period 2 (8.50 AM - 9.40 AM)',
+                        KIES: 'Period 3 (9.40 AM - 10.30 AM)',
+                        'DEV LAB': 'Morning Lab Slot (10.45 AM - 12.40 PM)',
+                        DCNS: 'Period 6 (1.15 PM - 1.55 PM)',
+                        FS: 'Period 7 (1.55 PM - 2.35 PM)'
+                      },
+                      FRI: {
+                        DCNS: 'Period 1 (8.00 AM - 8.50 AM)',
+                        'KIES LAB': 'Morning Lab Slot (8.50 AM - 10.30 AM)',
+                        KIES: 'Period 2 & 3 KIES LAB (8.50 AM - 10.30 AM) & Period 6 (1.15 PM - 1.55 PM)',
+                        FLAT: 'Period 4 (10.45 AM - 11.40 AM)',
+                        FS: 'Period 5 (11.40 AM - 12.40 PM)',
+                        DA: 'Period 7 (1.55 PM - 2.35 PM)',
+                        DEV: 'Period 8 (2.35 PM - 3.15 PM)'
+                      }
+                    };
+
+                    let calculatedPeriod = 'Period 1 (8.00 AM - 8.50 AM)';
+                    if (currentDayCode === 'SUN' || currentDayCode === 'SAT') {
+                      calculatedPeriod = 'Weekend / Off Day';
+                    } else if (PANIMALAR_MATRIX[currentDayCode]?.[sfUpper]) {
+                      calculatedPeriod = PANIMALAR_MATRIX[currentDayCode][sfUpper];
+                    } else if (savedPeriod) {
+                      calculatedPeriod = savedPeriod;
+                    }
+
                     return (
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="px-2 py-0.5 bg-amber-500/20 text-amber-900 border border-amber-400/40 rounded-md font-mono font-black text-xs">
                           {savedShortForm}
                         </span>
                         <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 font-extrabold rounded-md text-xs">
-                          {savedPeriod}
+                          {calculatedPeriod}
                         </span>
                         <span className="text-xs font-bold text-slate-600">• Section {selectedSection || 'Section F'}</span>
                       </div>
