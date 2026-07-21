@@ -307,6 +307,44 @@ export default function FacultyDashboard() {
     }
   };
 
+  // Automatic Email Notification Trigger on Session Day Load
+  useEffect(() => {
+    const daysShort = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    const currentDayCode = daysShort[new Date().getDay()];
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    const savedRaw = localStorage.getItem(`faculty_timetable_${user.id}`) || localStorage.getItem(`faculty_timetable_${user.email}`) || null;
+    let savedShortForm = getSubjectShortForm(subjectName, undefined, subjectCode);
+    let savedPeriod: string | null = null;
+    if (savedRaw) {
+      try {
+        const parsed = JSON.parse(savedRaw);
+        if (parsed?.period) savedPeriod = parsed.period;
+        if (parsed?.subjectShortForm) savedShortForm = parsed.subjectShortForm;
+      } catch { /* silent */ }
+    }
+
+    const sfUpper = (savedShortForm || getSubjectShortForm(subjectName, undefined, subjectCode)).toUpperCase();
+    const PANIMALAR_MATRIX: Record<string, Record<string, string>> = {
+      MON: { KIES: 'Period 6 (1.15 PM - 1.55 PM)' },
+      TUE: { KIES: 'Period 2 (8.50 AM - 9.40 AM)' },
+      WED: { KIES: 'Period 2 (8.50 AM - 9.40 AM)' },
+      THU: { KIES: 'Period 3 (9.40 AM - 10.30 AM)' },
+      FRI: { KIES: 'Period 2 & 3 KIES LAB (8.50 AM - 10.30 AM) & Period 6 (1.15 PM - 1.55 PM)' }
+    };
+
+    const hasClass = currentDayCode !== 'SUN' && currentDayCode !== 'SAT' && (!!PANIMALAR_MATRIX[currentDayCode]?.[sfUpper] || !!savedPeriod);
+
+    if (hasClass) {
+      const key = `auto_class_email_sent_${todayStr}_${user.id || user.email}`;
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, 'true');
+        console.log("[Auto Email Notification] Automatically sending class schedule email to faculty...");
+        sendClassEmailAlert();
+      }
+    }
+  }, [user.id, user.email, subjectName, subjectCode]);
+
   // Synchronize selected section once available sections load
   useEffect(() => {
     if (availableSections.length > 0 && (!selectedSection || !availableSections.includes(selectedSection))) {
@@ -1308,13 +1346,23 @@ export default function FacultyDashboard() {
                       }
                     };
 
-                    let calculatedPeriod = 'Period 1 (8.00 AM - 8.50 AM)';
-                    if (currentDayCode === 'SUN' || currentDayCode === 'SAT') {
-                      calculatedPeriod = 'Weekend / Off Day';
-                    } else if (PANIMALAR_MATRIX[currentDayCode]?.[sfUpper]) {
+                    let hasClass = false;
+                    let calculatedPeriod = '';
+
+                    if (currentDayCode !== 'SUN' && currentDayCode !== 'SAT' && PANIMALAR_MATRIX[currentDayCode]?.[sfUpper]) {
+                      hasClass = true;
                       calculatedPeriod = PANIMALAR_MATRIX[currentDayCode][sfUpper];
                     } else if (savedPeriod) {
+                      hasClass = true;
                       calculatedPeriod = savedPeriod;
+                    }
+
+                    if (!hasClass) {
+                      return (
+                        <span className="px-2.5 py-0.5 bg-slate-100 text-slate-500 rounded-md font-extrabold text-xs">
+                          No Class Scheduled Today
+                        </span>
+                      );
                     }
 
                     return (
