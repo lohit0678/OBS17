@@ -41,6 +41,47 @@ function Badge({ children, color = 'blue' }: { children: React.ReactNode; color?
   );
 }
 
+export function getSubjectShortForm(subjectName?: string, explicitShortForm?: string, subjectCode?: string): string {
+  if (explicitShortForm && explicitShortForm.trim()) return explicitShortForm.trim().toUpperCase();
+  if (!subjectName || subjectName === '—') return '—';
+  
+  const clean = subjectName.trim();
+  const knownMappings: Record<string, string> = {
+    'Knowledge Engineering': 'KIES',
+    'Knowledge Engineering and Intelligent Systems': 'KIES',
+    'Knowledge Engineering & Intelligent Systems': 'KIES',
+    'System Software': 'SSOS',
+    'System Software and Operating Systems': 'SSOS',
+    'System Software & Operating Systems': 'SSOS',
+    'Web Development': 'DEV',
+    'Development': 'DEV',
+    'Full Stack Development': 'FSD',
+    'Data Structures': 'DS',
+    'Design and Analysis of Algorithms': 'DAA',
+    'Object Oriented Programming': 'OOP',
+    'Database Management Systems': 'DBMS',
+    'Computer Networks': 'CN',
+    'Operating Systems': 'OS',
+    'Artificial Intelligence': 'AI',
+    'Machine Learning': 'ML',
+    'Deep Learning': 'DL',
+    'Cloud Computing': 'CC',
+  };
+
+  for (const [key, short] of Object.entries(knownMappings)) {
+    if (clean.toLowerCase().includes(key.toLowerCase())) {
+      return short;
+    }
+  }
+
+  const stopWords = new Set(['and', '&', 'of', 'in', 'for', 'the', 'to', 'with', 'lab', 'laboratory']);
+  const words = clean.split(/[\s\-_]+/).filter(w => !stopWords.has(w.toLowerCase()));
+  if (words.length >= 2) {
+    return words.map(w => w.charAt(0).toUpperCase()).join('');
+  }
+  return clean.slice(0, 4).toUpperCase();
+}
+
 function Spinner() {
   return <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />;
 }
@@ -680,8 +721,8 @@ function EditSectionModal({ section, token, onClose, onSave }: {
   );
 }
 
-function BatchesTab({ batches, sections, setBatches, setSections, token, onReload }: {
-  batches: Batch[]; sections: Section[];
+function BatchesTab({ batches, sections, faculties = [], setBatches, setSections, token, onReload }: {
+  batches: Batch[]; sections: Section[]; faculties?: any[];
   setBatches: React.Dispatch<React.SetStateAction<Batch[]>>;
   setSections: React.Dispatch<React.SetStateAction<Section[]>>;
   token: string;
@@ -964,6 +1005,56 @@ function BatchesTab({ batches, sections, setBatches, setSections, token, onReloa
                     ))}
                   </div>
                 )}
+
+                {/* Subjects & Timetable Short Forms Reference Card */}
+                <div className="p-4 bg-slate-50 border-t border-slate-100 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Handling Subjects & Timetable Short Forms</span>
+                    </h4>
+                    <span className="text-[10px] text-slate-400 font-bold">Matches short forms in college timetable images</span>
+                  </div>
+
+                  {(() => {
+                    const batchFaculties = faculties.filter((f: any) => {
+                      if (f.batchId === batch.id || f.batch === batch.name) return true;
+                      if (f.department === batch.department) return true;
+                      return false;
+                    });
+
+                    if (batchFaculties.length === 0) {
+                      return (
+                        <p className="text-[11px] text-slate-400 italic">No faculty / subjects assigned to this department yet.</p>
+                      );
+                    }
+
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+                        {batchFaculties.map((f: any, fIdx: number) => {
+                          const subName = f.subjectName || (Array.isArray(f.subjectsHandled) && f.subjectsHandled[0]) || f.subject || 'Subject';
+                          const subCode = f.subjectCode || '—';
+                          const shortForm = getSubjectShortForm(subName, f.subjectShortForm, subCode);
+
+                          return (
+                            <div key={f.id || fIdx} className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs flex flex-col justify-between space-y-1.5">
+                              <div className="flex items-center justify-between gap-1.5">
+                                <span className="px-2 py-0.5 bg-amber-500/20 text-amber-900 border border-amber-500/30 rounded-md font-mono font-black text-xs shadow-2xs">
+                                  {shortForm}
+                                </span>
+                                <span className="font-mono text-[10px] text-indigo-600 font-extrabold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">{subCode}</span>
+                              </div>
+                              <div>
+                                <p className="font-extrabold text-slate-900 text-xs truncate" title={subName}>{subName}</p>
+                                <p className="text-[10px] text-slate-500 font-medium truncate mt-0.5">Faculty: <strong className="text-slate-700">{f.name || f.email}</strong></p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
             );
           })}
@@ -1891,8 +1982,13 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
                       </td>
                       <td className="px-4 py-3.5 text-slate-600">{f.department}</td>
                       <td className="px-4 py-3.5">
-                        <p className="font-semibold text-slate-700">{f.labName}</p>
-                        {f.subjectCode && <p className="text-[10px] text-slate-400">{f.subjectCode}</p>}
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-900 border border-amber-500/30 rounded text-[10px] font-mono font-black">
+                            {getSubjectShortForm(f.labName || f.subjectName || f.subject, f.subjectShortForm, f.subjectCode)}
+                          </span>
+                          {f.subjectCode && <span className="text-[9px] text-indigo-600 font-mono font-bold">{f.subjectCode}</span>}
+                        </div>
+                        <p className="font-extrabold text-slate-800 text-xs">{f.labName || f.subjectName || f.subject || '—'}</p>
                       </td>
                       <td className="px-4 py-3.5">
                         {assignedSection ? (
@@ -1999,10 +2095,20 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
                   {timetableModalFaculty.department || 'Department Faculty'}
                 </span>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs pt-2 border-t border-slate-800">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-2 border-t border-slate-800">
                 <div>
                   <span className="text-slate-400 text-[10px] uppercase font-bold block">Handling Subject</span>
                   <span className="font-extrabold text-white">{timetableModalFaculty.subjectName || timetableModalFaculty.subject || '—'}</span>
+                </div>
+                <div>
+                  <span className="text-amber-400 text-[10px] uppercase font-extrabold block">Short Form (Timetable Tag)</span>
+                  <span className="inline-block px-2 py-0.5 bg-amber-500/25 text-amber-300 border border-amber-500/40 rounded-md font-mono font-black text-xs">
+                    {getSubjectShortForm(
+                      timetableModalFaculty.subjectName || timetableModalFaculty.subject,
+                      timetableModalFaculty.subjectShortForm,
+                      timetableModalFaculty.subjectCode
+                    )}
+                  </span>
                 </div>
                 <div>
                   <span className="text-slate-400 text-[10px] uppercase font-bold block">Subject Code</span>
@@ -2493,8 +2599,13 @@ function MonitoringTab({ faculties, students, sections, batches, token, onRefres
                             </td>
                             <td className="px-4 py-3.5 font-bold text-slate-800">{f.department || '—'}</td>
                             <td className="px-4 py-3.5">
-                              <div className="font-bold text-slate-800">{subjectDisplayName}</div>
-                              {f.subjectCode && <div className="text-[9px] text-indigo-600 font-mono font-bold">{f.subjectCode}</div>}
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-900 border border-amber-500/30 rounded text-[10px] font-mono font-black">
+                                  {getSubjectShortForm(subjectDisplayName, f.subjectShortForm, f.subjectCode)}
+                                </span>
+                                {f.subjectCode && <span className="text-[9px] text-indigo-600 font-mono font-bold">{f.subjectCode}</span>}
+                              </div>
+                              <div className="font-extrabold text-slate-800 text-xs">{subjectDisplayName}</div>
                             </td>
                             <td className="px-4 py-3.5 font-bold text-slate-700">{f.labName || '—'}</td>
                             <td className="px-4 py-3.5 text-center">
@@ -2865,7 +2976,7 @@ export default function AdminDashboard() {
       ) : (
         <>
           {activeTab === 'overview'   && <OverviewTab batches={batches} sections={sections} faculties={faculties} students={students} />}
-          {activeTab === 'batches'    && <BatchesTab  batches={batches} sections={sections} setBatches={setBatches} setSections={setSections} token={token} onReload={loadBatchesAndSections} />}
+          {activeTab === 'batches'    && <BatchesTab  batches={batches} sections={sections} faculties={faculties} setBatches={setBatches} setSections={setSections} token={token} onReload={loadBatchesAndSections} />}
           {activeTab === 'timetable' && <TimetableBuilderTab sections={sections} batches={batches} token={token} />}
           {activeTab === 'access'    && (
             <AccessTab

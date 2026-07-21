@@ -104,6 +104,7 @@ export interface Faculty {
   batch: string;
   subjectsHandled: string[];
   subjectCode?: string;
+  subjectShortForm?: string;
   experience: string;
   workloadHours: number;
   performanceScore: number; // Out of 100
