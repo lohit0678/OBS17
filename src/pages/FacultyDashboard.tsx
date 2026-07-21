@@ -246,7 +246,7 @@ export default function FacultyDashboard() {
     setSignoffState({});
   }
 
-  const sendClassEmailAlert = async () => {
+  const sendClassEmailAlert = async (silent = true) => {
     const savedRaw = localStorage.getItem(`faculty_timetable_${user.id}`) || localStorage.getItem(`faculty_timetable_${user.email}`) || null;
     let savedPeriod: string | null = null;
     let savedShortForm = getSubjectShortForm(subjectName, undefined, subjectCode);
@@ -297,13 +297,15 @@ export default function FacultyDashboard() {
         })
       });
       const data = await res.json();
-      if (res.ok && data.success) {
-        alert(`📧 Class Notification Email Sent!\n\nTo: ${facultyData.email || user.email}\nSubject: Class Schedule Alert: Today you have ${savedShortForm} (${calculatedPeriod})\n\nMessage:\nHello ${facultyData.name || 'Professor'},\nToday (${currentDateStr}) you have a class/lab session scheduled:\n• Subject: ${subjectName} (${savedShortForm})\n• Timetable Period: ${calculatedPeriod}\n• Section: ${selectedSection || 'Section F'}\n\nPlease log into the OBS17 Lab Notebook portal to record marks and observation signatures.`);
-      } else {
-        alert(`📧 Class Notification Email Dispatched to ${facultyData.email || user.email}!`);
+      if (!silent) {
+        if (res.ok && data.success) {
+          alert(`📧 Class Notification Email Sent!\n\nTo: ${facultyData.email || user.email}\nSubject: Class Schedule Alert: Today you have ${savedShortForm} (${calculatedPeriod})\n\nMessage:\nHello ${facultyData.name || 'Professor'},\nToday (${currentDateStr}) you have a class/lab session scheduled:\n• Subject: ${subjectName} (${savedShortForm})\n• Timetable Period: ${calculatedPeriod}\n• Section: ${selectedSection || 'Section F'}\n\nPlease log into the OBS17 Lab Notebook portal to record marks and observation signatures.`);
+        } else {
+          alert(`📧 Class Notification Email Dispatched to ${facultyData.email || user.email}!`);
+        }
       }
     } catch {
-      alert(`📧 Class Notification Email Dispatched to ${facultyData.email || user.email}!`);
+      if (!silent) alert(`📧 Class Notification Email Dispatched to ${facultyData.email || user.email}!`);
     }
   };
 
@@ -1380,14 +1382,6 @@ export default function FacultyDashboard() {
                 </div>
               </div>
             </div>
-
-            <button
-              onClick={sendClassEmailAlert}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-2 shadow-sm shrink-0 active:scale-95"
-            >
-              <Mail className="w-3.5 h-3.5" />
-              <span>Send Class Alert Email</span>
-            </button>
           </div>
 
           {/* ADMIN ASSIGNED ACADEMIC PROFILE BANNER */}
