@@ -68,10 +68,45 @@ export default function FacultyDashboard() {
   const today = getLocalDateString();
 
   // Selected Section State (Default: empty, synced dynamically)
-  const [selectedSection, setSelectedSection] = useState<string>('');
+  const [selectedSection, setSelectedSection] = useState<string>(() => {
+    const saved = localStorage.getItem(`faculty_selected_section_${user?.id || 'gen'}`);
+    return saved || '';
+  });
 
   // Selected Batch Year State (Default: 2024 - 2028)
-  const [selectedBatch, setSelectedBatch] = useState<string>('2024 - 2028');
+  const [selectedBatch, setSelectedBatch] = useState<string>(() => {
+    const saved = localStorage.getItem(`faculty_selected_batch_${user?.id || 'gen'}`);
+    return saved || '2024 - 2028';
+  });
+
+  useEffect(() => {
+    if (selectedSection) {
+      localStorage.setItem(`faculty_selected_section_${user?.id || 'gen'}`, selectedSection);
+    }
+  }, [selectedSection, user?.id]);
+
+  useEffect(() => {
+    if (selectedBatch) {
+      localStorage.setItem(`faculty_selected_batch_${user?.id || 'gen'}`, selectedBatch);
+    }
+  }, [selectedBatch, user?.id]);
+
+  const [dbBatches, setDbBatches] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (user?.token) {
+      fetch("/api/admin/batches", {
+        headers: {
+          "Authorization": `Bearer ${user.token}`
+        }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.batches) setDbBatches(data.batches);
+      })
+      .catch(err => console.error("Error fetching batches in FacultyDashboard:", err));
+    }
+  }, [user?.token]);
 
   // Popover menu open state variables
   const [isSectionOpen, setIsSectionOpen] = useState<boolean>(false);
@@ -100,6 +135,13 @@ export default function FacultyDashboard() {
     }
   }, [tab]);
 
+  // Total Weeks customizable by the faculty
+  const [totalWeeks, setTotalWeeks] = useState<number>(() => {
+    const saved = localStorage.getItem(`faculty_total_weeks_${user.id}`);
+    return saved !== null ? parseInt(saved, 10) : 6;
+  });
+  const totalExercises = totalWeeks * 2;
+
   // Completed Lab Sessions Counter (Manually editable by Faculty & saved in localStorage)
   const [sessionsCompleted, setSessionsCompleted] = useState<number>(() => {
     const saved = localStorage.getItem(`faculty_sessions_completed_${user.id}`);
@@ -107,7 +149,7 @@ export default function FacultyDashboard() {
   });
 
   const handleUpdateSessionsCompleted = (val: number) => {
-    const safeVal = Math.max(0, Math.min(12, isNaN(val) ? 0 : val));
+    const safeVal = Math.max(0, Math.min(totalExercises, isNaN(val) ? 0 : val));
     setSessionsCompleted(safeVal);
     localStorage.setItem(`faculty_sessions_completed_${user.id}`, safeVal.toString());
   };
@@ -176,8 +218,25 @@ export default function FacultyDashboard() {
 
   // Get Faculty phone, subject code, etc. based on ID or defaults
   const phoneNo = facultyData.phone || (user.id === "F01" ? "+91 94451 98721" : user.id === "F02" ? "+91 98404 12345" : "+91 91500 54321");
-  const subjectName = facultyData.subjectName || facultyData.subjectsHandled?.[0] || "General Lab";
-  const subjectCode = facultyData.subjectCode || "";
+  // Dynamically resolve section-specific subject configuration if assignedSectionMappings is present
+  const sectionMapping = facultyData?.assignedSectionMappings?.find((m: any) => {
+    return m.sectionId === selectedSection || m.sectionName?.toLowerCase() === selectedSection.toLowerCase();
+  });
+
+  const subjectName = sectionMapping?.subjectName || facultyData.subjectName || facultyData.subjectsHandled?.[0] || "General Lab";
+  const subjectCode = sectionMapping?.subjectCode || facultyData.subjectCode || "";
+  const labName = sectionMapping?.labName || facultyData.labName || "";
+
+  const currentSectionId = sectionMapping?.sectionId || "";
+  const getFacultyTimetableData = (fId: string, fEmail: string, secId: string) => {
+    if (secId) {
+      const key = `faculty_timetable_${fId}_${secId}`;
+      const keyEmail = `faculty_timetable_${fEmail}_${secId}`;
+      const val = localStorage.getItem(key) || localStorage.getItem(keyEmail);
+      if (val) return val;
+    }
+    return localStorage.getItem(`faculty_timetable_${fId}`) || localStorage.getItem(`faculty_timetable_${fEmail}`) || null;
+  };
 
   // Helper for consistent subject key construction (prefix faculty identity for strict multi-faculty isolation)
   const codeClean = (subjectCode || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "_");
@@ -189,17 +248,58 @@ export default function FacultyDashboard() {
   // Restrict students to only those assigned to this faculty member / section
   const myStudents = getFacultyStudents(user.email || user.id);
 
-  // List of all sections assigned to or handled by this faculty
-  const myTimetableSections = facultyData?.timetable?.map((slot: any) => slot.batch) || [];
-  const myStudentSections = myStudents.map((s: any) => s.section);
-  const assignedSectionLabel = facultyData?.section ? [facultyData.section] : [];
-  const rawSections = Array.from(new Set([...myTimetableSections, ...myStudentSections, ...assignedSectionLabel])).filter(Boolean).sort();
+  // Standardize and merge DB batch years with fallback defaults
+  const dbBatchYears = dbBatches.map(b => {
+    const y = b.year || '';
+    if (y && !y.includes(' - ') && y.includes('-')) {
+      return y.replace('-', ' - ');
+    }
+    return y;
+  }).filter(Boolean);
+
+  const batchOptions = Array.from(new Set([
+    ...dbBatchYears,
+    '2024 - 2028',
+    '2023 - 2027',
+    '2022 - 2026',
+    '2025 - 2029'
+  ])).sort((a, b) => b.localeCompare(a));
+
+  // Filter students belonging to the currently selected batch (by database ID, or roll number starting year prefix, or batch string)
+  const batchStudents = myStudents.filter((s: any) => {
+    const targetYearClean = selectedBatch.replace(/\s+/g, '');
+    const matchedDbBatch = dbBatches.find((b: any) => (b.year || '').replace(/\s+/g, '') === targetYearClean);
+    if (matchedDbBatch && (s.batchId === matchedDbBatch.id || s.batchId === matchedDbBatch._id)) {
+      return true;
+    }
+    const yearPrefix = selectedBatch.split('-')[0].trim(); // e.g. "2024"
+    if (s.rollNo && String(s.rollNo).startsWith(yearPrefix)) {
+      return true;
+    }
+    if (s.batch === selectedBatch || s.batchName === selectedBatch) {
+      return true;
+    }
+    return false;
+  });
+
+  // List of all sections assigned to or handled by this faculty under the selected batch
+  const myStudentSections = batchStudents.map((s: any) => s.section);
+  
+  let rawSections = Array.from(new Set(myStudentSections)).filter(Boolean).sort();
+  
+  // Fallback if no student sections exist for selected batch
+  if (rawSections.length === 0) {
+    const myTimetableSections = facultyData?.timetable?.map((slot: any) => slot.batch) || [];
+    const assignedSectionLabel = facultyData?.section ? [facultyData.section] : [];
+    rawSections = Array.from(new Set([...myTimetableSections, ...assignedSectionLabel])).filter(Boolean).sort();
+  }
+
   const availableSections = rawSections.length > 1 ? ['All Sections', ...rawSections] : (rawSections.length === 1 ? rawSections : ['Assigned Section']);
 
   // Filter students belonging to the currently selected section
   const sectionStudents = (!selectedSection || selectedSection === 'All' || selectedSection === 'All Sections')
-    ? myStudents
-    : myStudents.filter(
+    ? batchStudents
+    : batchStudents.filter(
         (student) =>
           student.section === selectedSection ||
           student.batchId === selectedSection ||
@@ -220,6 +320,53 @@ export default function FacultyDashboard() {
       setSelectedSection(availableSections[0]);
     }
   }, [availableSections, selectedSection]);
+
+  // Synchronize selectedBatch to faculty's assigned batch if there is no localStorage value saved
+  useEffect(() => {
+    if (facultyData && dbBatches.length > 0) {
+      const savedBatch = localStorage.getItem(`faculty_selected_batch_${user?.id || 'gen'}`);
+      if (!savedBatch) {
+        let targetBatch = '';
+        if (facultyData.batchId) {
+          const found = dbBatches.find((b: any) => b.id === facultyData.batchId || b._id === facultyData.batchId);
+          if (found) {
+            const y = found.year || '';
+            targetBatch = y.includes('-') && !y.includes(' - ') ? y.replace('-', ' - ') : y;
+          }
+        }
+        if (!targetBatch && facultyData.batch) {
+          const bVal = facultyData.batch;
+          targetBatch = bVal.includes('-') && !bVal.includes(' - ') ? bVal.replace('-', ' - ') : bVal;
+        }
+
+        if (targetBatch && targetBatch !== selectedBatch) {
+          setSelectedBatch(targetBatch);
+        }
+      }
+    }
+  }, [facultyData, dbBatches, user?.id, selectedBatch]);
+
+  // Synchronize selectedSection to faculty's assigned section if there is no localStorage value saved
+  useEffect(() => {
+    if (facultyData && availableSections.length > 0) {
+      const savedSection = localStorage.getItem(`faculty_selected_section_${user?.id || 'gen'}`);
+      if (!savedSection) {
+        let targetSection = '';
+        if (facultyData.sectionId) {
+          const found = availableSections.find((s: any) => String(s).toLowerCase() === String(facultyData.sectionId).toLowerCase()) as string;
+          if (found) targetSection = found;
+        }
+        if (!targetSection && facultyData.section) {
+          const found = availableSections.find((s: any) => String(s).toLowerCase() === String(facultyData.section).toLowerCase()) as string;
+          if (found) targetSection = found;
+        }
+
+        if (targetSection && targetSection !== selectedSection) {
+          setSelectedSection(targetSection);
+        }
+      }
+    }
+  }, [facultyData, availableSections, user?.id, selectedSection]);
 
   // Synchronize state when the selected section or students list changes.
   // On first load for a section: restore from DB. On subsequent students refreshes: only fill in missing entries.
@@ -260,9 +407,8 @@ export default function FacultyDashboard() {
           newAttendance[student.id] = myRecord ? (myRecord.status as any) : 'Present';
         }
 
-        // Build signoff state (always re-computed from latest DB data)
         newSignoffs[student.id] = {};
-        for (let i = 1; i <= 12; i++) {
+        for (let i = 1; i <= totalExercises; i++) {
           const targetExpId = `exp-${subjectKey}-${i}`;
           const targetAsgId = `asg-${subjectKey}-${i}`;
 
@@ -302,14 +448,14 @@ export default function FacultyDashboard() {
 
   // Signed Student Counts for Selected Section (Counts how many students got signature)
   const studentsWithObservationSigned = sectionStudents.filter(student => {
-    return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].some(expIdx => {
+    return Array.from({ length: totalExercises }, (_, i) => i + 1).some(expIdx => {
       const state = signoffState[student.id]?.[expIdx];
       return state?.observation === 'tick' || (state?.observationMarks !== undefined && state?.observationMarks !== '' && state?.observationMarks !== null);
     });
   }).length;
 
   const studentsWithRecordSigned = sectionStudents.filter(student => {
-    return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].some(expIdx => {
+    return Array.from({ length: totalExercises }, (_, i) => i + 1).some(expIdx => {
       return signoffState[student.id]?.[expIdx]?.record === 'tick';
     });
   }).length;
@@ -497,6 +643,14 @@ export default function FacultyDashboard() {
     }
   };
 
+  const focusMarkInput = (stIdx: number, expIdx: number) => {
+    const el = document.getElementById(`mark-input-${stIdx}-${expIdx}`) as HTMLInputElement | null;
+    if (el) {
+      el.focus();
+      el.select();
+    }
+  };
+
   // CSV Export helper function using Blob
   const triggerExcelExport = (headers: string[], rows: string[][], fileName: string) => {
     const csvContent = [
@@ -535,69 +689,113 @@ export default function FacultyDashboard() {
         ['PANIMALAR ENGINEERING COLLEGE'],
         ['DEPARTMENT OF ARTIFICIAL INTELLIGENCE & DATA SCIENCE'],
         [`LABORATORY OBSERVATION RECORDS & MARKS REPORT — SECTION ${selectedSection}`],
-        [`Subject: ${subjectName}${subjectCode ? ` (${subjectCode})` : ''} | Batch: ${selectedBatch} | Date: ${new Date().toLocaleDateString()}`],
+        [`Subject: ${subjectName}${subjectCode ? ` (${subjectCode})` : ''} | Batch: ${selectedBatch} | Date: ${new Date().toLocaleDateString('en-GB')}`],
         [] // blank row
       ];
+      // Row 1: Week headers (each week spans 2 exp columns)
+      const weekHeader: any[] = ['S.NO', 'ROLL NO', 'STUDENT NAME', 'REGISTER NUMBER'];
+      // Row 2: Exp headers
+      const expHeader: any[]  = ['', '', '', ''];
 
-      const headers = [
-        'S.NO', 'ROLL NO', 'REGISTER NUMBER', 'STUDENT NAME',
-        'EXP 1 MARKS', 'EXP 1 STATUS',
-        'EXP 2 MARKS', 'EXP 2 STATUS',
-        'EXP 3 MARKS', 'EXP 3 STATUS',
-        'EXP 4 MARKS', 'EXP 4 STATUS',
-        'EXP 5 MARKS', 'EXP 5 STATUS',
-        'EXP 6 MARKS', 'EXP 6 STATUS',
-        'EXP 7 MARKS', 'EXP 7 STATUS',
-        'EXP 8 MARKS', 'EXP 8 STATUS',
-        'EXP 9 MARKS', 'EXP 9 STATUS',
-        'EXP 10 MARKS', 'EXP 10 STATUS',
-        'EXP 11 MARKS', 'EXP 11 STATUS',
-        'EXP 12 MARKS', 'EXP 12 STATUS',
-        'TOTAL OBSERVATION MARKS', 'AVERAGE MARKS', 'SIGNATURE STATUS'
-      ];
+      for (let w = 1; w <= totalWeeks; w++) {
+        weekHeader.push(`WEEK ${w}`, '');
+        expHeader.push(`EXP ${w * 2 - 1}`, `EXP ${w * 2}`);
+      }
 
+      weekHeader.push('TOTAL MARKS', 'AVERAGE MARKS', 'REMARKS');
+      expHeader.push('', '', '');
+
+      // Build student data rows — reading directly from live signoffState
       const studentRows = sectionStudents.map((st, idx) => {
         let totalMarks = 0;
         let evalCount = 0;
-        let hasSignature = false;
+        let hasAnyEntry = false;
 
-        const row: any[] = [idx + 1, st.rollNo, st.registerNo, st.name];
+        const row: any[] = [idx + 1, st.rollNo || '-', st.name || '-', st.registerNo || '-'];
 
-        for (let expIdx = 1; expIdx <= 12; expIdx++) {
+        for (let expIdx = 1; expIdx <= totalExercises; expIdx++) {
           const state = signoffState[st.id]?.[expIdx];
-          const markStr = state?.observationMarks;
-          const markNum = markStr !== undefined && markStr !== '' && markStr !== null ? Number(markStr) : null;
-          
-          const obsVal = state?.observation || 'none';
-          const statusText = obsVal === 'tick' ? 'Signed' : (obsVal === 'cross' ? 'Rejected' : 'Pending');
+          const markStr = (state?.observationMarks ?? '').toString().trim();
+          const isStudentAbsent = attendanceState[st.id] === 'Absent';
 
-          if (markNum !== null && !isNaN(markNum)) {
-            totalMarks += markNum;
-            evalCount++;
-          }
-          if (obsVal === 'tick' || markNum !== null) {
-            hasSignature = true;
+          let displayMark: any = '-';
+
+          if (markStr === '') {
+            if (isStudentAbsent) {
+              displayMark = 'A';
+            } else {
+              displayMark = '-';
+            }
+          } else if (markStr === 'A' || markStr.startsWith('A/')) {
+            displayMark = markStr;
+            hasAnyEntry = true;
+          } else if (markStr === 'OD' || markStr.startsWith('OD/')) {
+            displayMark = markStr;
+            hasAnyEntry = true;
+          } else if (markStr.startsWith('F/') || markStr === 'F') {
+            displayMark = markStr;
+            const numPart = Number(markStr.replace(/^F\//i, ''));
+            if (!isNaN(numPart)) { totalMarks += numPart; evalCount++; }
+            hasAnyEntry = true;
+          } else if (markStr.startsWith('L/') || markStr === 'L') {
+            displayMark = markStr;
+            const numPart = Number(markStr.replace(/^L\//i, ''));
+            if (!isNaN(numPart)) { totalMarks += numPart; evalCount++; }
+            hasAnyEntry = true;
+          } else {
+            const num = Number(markStr);
+            if (!isNaN(num)) {
+              displayMark = num;
+              totalMarks += num;
+              evalCount++;
+            } else {
+              displayMark = markStr;
+            }
+            hasAnyEntry = true;
           }
 
-          row.push(markNum !== null ? markNum : '-', statusText);
+          row.push(displayMark);
         }
 
         const avgMarks = evalCount > 0 ? (totalMarks / evalCount).toFixed(1) : '-';
-        row.push(totalMarks, avgMarks, hasSignature ? 'Signed' : 'Not Signed');
+        const remarks = hasAnyEntry
+          ? (signoffState[st.id]?.[totalExercises]?.observation === 'tick' ? 'Signed' : 'Evaluated')
+          : 'Pending';
+        row.push(evalCount > 0 ? totalMarks : '-', avgMarks, remarks);
         return row;
       });
 
-      const ws = XLSX.utils.aoa_to_sheet([...titleRows, headers, ...studentRows]);
+      const ws = XLSX.utils.aoa_to_sheet([...titleRows, weekHeader, expHeader, ...studentRows]);
+
+      const merges: any[] = [
+        { s: { r: 5, c: 0 }, e: { r: 6, c: 0 } }, // S.NO
+        { s: { r: 5, c: 1 }, e: { r: 6, c: 1 } }, // ROLL NO
+        { s: { r: 5, c: 2 }, e: { r: 6, c: 2 } }, // STUDENT NAME
+        { s: { r: 5, c: 3 }, e: { r: 6, c: 3 } }, // REGISTER NUMBER
+      ];
+
+      for (let w = 1; w <= totalWeeks; w++) {
+        const startCol = 4 + (w - 1) * 2;
+        merges.push({ s: { r: 5, c: startCol }, e: { r: 5, c: startCol + 1 } });
+      }
+
+      merges.push(
+        { s: { r: 5, c: 4 + totalExercises     }, e: { r: 6, c: 4 + totalExercises     } },
+        { s: { r: 5, c: 4 + totalExercises + 1 }, e: { r: 6, c: 4 + totalExercises + 1 } },
+        { s: { r: 5, c: 4 + totalExercises + 2 }, e: { r: 6, c: 4 + totalExercises + 2 } }
+      );
+
+      ws['!merges'] = merges;
 
       ws['!cols'] = [
-        { wch: 6 },  // S.No
-        { wch: 12 }, // Roll No
-        { wch: 16 }, // Register No
-        { wch: 25 }, // Name
-        ...Array(24).fill({ wch: 12 }),
-        { wch: 24 }, // Total Marks
+        { wch: 5  }, // S.No
+        { wch: 16 }, // Roll No
+        { wch: 26 }, // Student Name
+        { wch: 18 }, // Register No
+        ...Array(totalExercises).fill({ wch: 9 }),
+        { wch: 14 }, // Total Marks
         { wch: 14 }, // Avg Marks
-        { wch: 18 }, // Signature Status
+        { wch: 14 }, // Remarks
       ];
 
       const wb = XLSX.utils.book_new();
@@ -613,18 +811,16 @@ export default function FacultyDashboard() {
   // Export Page 3 (Sign-off Matrix) to Excel (CSV)
   const handleExportSignoffMatrix = () => {
     const headers = [
-      'S.No', 'Roll No', 'Student Name', 'Register Number',
-      'W1-E1 Obs', 'W1-E1 Rec', 'W1-E2 Obs', 'W1-E2 Rec',
-      'W2-E3 Obs', 'W2-E3 Rec', 'W2-E4 Obs', 'W2-E4 Rec',
-      'W3-E5 Obs', 'W3-E5 Rec', 'W3-E6 Obs', 'W3-E6 Rec',
-      'W4-E7 Obs', 'W4-E7 Rec', 'W4-E8 Obs', 'W4-E8 Rec',
-      'W5-E9 Obs', 'W5-E9 Rec', 'W5-E10 Obs', 'W5-E10 Rec',
-      'W6-E11 Obs', 'W6-E11 Rec', 'W6-E12 Obs', 'W6-E12 Rec'
+      'S.No', 'Roll No', 'Student Name', 'Register Number'
     ];
+    for (let i = 1; i <= totalExercises; i++) {
+      const weekIdx = Math.ceil(i / 2);
+      headers.push(`W${weekIdx}-E${i} Obs`, `W${weekIdx}-E${i} Rec`);
+    }
 
     const rows = sectionStudents.map((st, idx) => {
       const row = [(idx + 1).toString(), st.rollNo, st.name, st.registerNo];
-      for (let expIdx = 1; expIdx <= 12; expIdx++) {
+      for (let expIdx = 1; expIdx <= totalExercises; expIdx++) {
         const obsVal = signoffState[st.id]?.[expIdx]?.observation || 'none';
         const recVal = signoffState[st.id]?.[expIdx]?.record || 'none';
         const obs = obsVal === 'tick' ? 'Signed' : (obsVal === 'cross' ? 'Incorrect' : 'Pending');
@@ -659,67 +855,103 @@ export default function FacultyDashboard() {
   ];
 
   // 2. Observations and Records Completion Counts histogram
-  // Group students by how many notebooks they have completed (out of 12)
-  let obs_10_12 = 0;
-  let obs_7_9 = 0;
-  let obs_4_6 = 0;
-  let obs_0_3 = 0;
+  // Group students by how many notebooks they have completed (out of totalExercises)
+  const q4_start = Math.max(1, Math.round(totalExercises * 0.75));
+  const q3_start = Math.max(1, Math.round(totalExercises * 0.50));
+  const q2_start = Math.max(1, Math.round(totalExercises * 0.25));
 
-  let rec_10_12 = 0;
-  let rec_7_9 = 0;
-  let rec_4_6 = 0;
-  let rec_0_3 = 0;
+  let obs_q4 = 0;
+  let obs_q3 = 0;
+  let obs_q2 = 0;
+  let obs_q1 = 0;
+
+  let rec_q4 = 0;
+  let rec_q3 = 0;
+  let rec_q2 = 0;
+  let rec_q1 = 0;
 
   sectionStudents.forEach(st => {
     let studentObs = 0;
     let studentRec = 0;
-    for (let expIdx = 1; expIdx <= 12; expIdx++) {
+    for (let expIdx = 1; expIdx <= totalExercises; expIdx++) {
       if (signoffState[st.id]?.[expIdx]?.observation === 'tick') studentObs++;
       if (signoffState[st.id]?.[expIdx]?.record === 'tick') studentRec++;
     }
 
-    if (studentObs >= 10) obs_10_12++;
-    else if (studentObs >= 7) obs_7_9++;
-    else if (studentObs >= 4) obs_4_6++;
-    else obs_0_3++;
+    if (studentObs >= q4_start) obs_q4++;
+    else if (studentObs >= q3_start) obs_q3++;
+    else if (studentObs >= q2_start) obs_q2++;
+    else obs_q1++;
 
-    if (studentRec >= 10) rec_10_12++;
-    else if (studentRec >= 7) rec_7_9++;
-    else if (studentRec >= 4) rec_4_6++;
-    else rec_0_3++;
+    if (studentRec >= q4_start) rec_q4++;
+    else if (studentRec >= q3_start) rec_q3++;
+    else if (studentRec >= q2_start) rec_q2++;
+    else rec_q1++;
   });
 
   const signoffHistogramData = [
-    { name: '10-12 Exp', Observations: obs_10_12, Records: rec_10_12 },
-    { name: '7-9 Exp', Observations: obs_7_9, Records: rec_7_9 },
-    { name: '4-6 Exp', Observations: obs_4_6, Records: rec_4_6 },
-    { name: '0-3 Exp', Observations: obs_0_3, Records: rec_0_3 }
+    { name: `${q4_start}-${totalExercises} Exp`, Observations: obs_q4, Records: rec_q4 },
+    { name: `${q3_start}-${q4_start - 1} Exp`, Observations: obs_q3, Records: rec_q3 },
+    { name: `${q2_start}-${q3_start - 1} Exp`, Observations: obs_q2, Records: rec_q2 },
+    { name: `0-${q2_start - 1} Exp`, Observations: obs_q1, Records: rec_q1 }
   ];
 
   return (
     <div className="space-y-6">
-      {/* HEADER BAR */}
-      <div className="bg-gradient-to-r from-blue-950 to-[#0B192C] text-white p-6 rounded-3xl border border-blue-900/40 shadow-xl relative overflow-hidden">
-        <div className="absolute right-0 top-0 opacity-10 pointer-events-none transform translate-x-12 -translate-y-12">
-          <Building className="w-96 h-96" />
+      {/* MAIN TOP HEADER BLOCK */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl md:text-3xl font-black tracking-tight text-slate-800">
+            Panimalar Faculty Dashboard
+          </h1>
         </div>
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <span className="px-3 py-1 bg-blue-500/20 text-blue-300 text-[10px] font-bold rounded-full uppercase tracking-widest border border-blue-500/30">
-              Departmental ERP Console
-            </span>
-            <h1 className="text-2xl md:text-3xl font-black mt-2 tracking-tight">
-              Panimalar Faculty Dashboard
-            </h1>
-            <p className="text-xs text-slate-300 mt-1 font-medium">
-              Welcome, <span className="text-blue-300 font-extrabold">{facultyData.name}</span> &bull; Academic Year 2026-2027
-            </p>
-          </div>
-          <div className="flex items-center gap-3 bg-slate-800/40 border border-slate-700/50 p-3 rounded-2xl">
-            <Clock className="w-5 h-5 text-blue-400" />
-            <div className="text-left font-mono">
-              <p className="text-xs font-bold text-slate-100">AI & DS Labs</p>
-              <p className="text-[10px] text-slate-400">System Clock Sync Active</p>
+
+        {/* ADMIN ASSIGNED ACADEMIC PROFILE BANNER */}
+        <div className="bg-gradient-to-r from-indigo-900 via-indigo-850 to-slate-900 text-white rounded-3xl p-6 shadow-md border border-indigo-700/40">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 bg-indigo-500/20 text-indigo-300 rounded-2xl flex items-center justify-center font-black text-xl border border-indigo-400/30 shrink-0 shadow-inner">
+                {facultyData.name?.charAt(0) || 'F'}
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
+                  {facultyData.name}
+                  <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-[10px] font-bold rounded-full border border-emerald-500/30 uppercase">
+                    Activated & Verified
+                  </span>
+                </h3>
+                <p className="text-xs text-indigo-200/90 font-medium flex items-center gap-2 mt-0.5">
+                  <Mail className="w-3.5 h-3.5 text-indigo-400" /> {facultyData.email || user.email}
+                  {phoneNo && <><span>•</span> <Phone className="w-3.5 h-3.5 text-indigo-400" /> {phoneNo}</>}
+                </p>
+                {facultyData.labDay && (
+                  <p className="text-[11px] text-amber-300 font-extrabold mt-1.5 flex items-center gap-1">
+                    <span>🗓️ Analyzed Lab:</span>
+                    <span className="bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 text-white font-black text-[10px]">
+                      {facultyData.labDay} ({facultyData.labPeriod || facultyData.labTime})
+                    </span>
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-white/10 backdrop-blur-xs p-3 rounded-2xl border border-white/10 text-center">
+                <p className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Assigned Lab</p>
+                <p className="text-xs font-extrabold text-white mt-0.5 truncate">{facultyData.labName || 'General Lab'}</p>
+              </div>
+              <div className="bg-white/10 backdrop-blur-xs p-3 rounded-2xl border border-white/10 text-center">
+                <p className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Subject & Code</p>
+                <p className="text-xs font-extrabold text-white mt-0.5 truncate">{subjectName} ({subjectCode})</p>
+              </div>
+              <div className="bg-white/10 backdrop-blur-xs p-3 rounded-2xl border border-white/10 text-center">
+                <p className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Assigned Section</p>
+                <p className="text-xs font-extrabold text-emerald-300 mt-0.5 truncate">{selectedSection}</p>
+              </div>
+              <div className="bg-white/10 backdrop-blur-xs p-3 rounded-2xl border border-white/10 text-center">
+                <p className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Section Students</p>
+                <p className="text-xs font-extrabold text-amber-300 mt-0.5">{sectionStudents.length} Enrolled</p>
+              </div>
             </div>
           </div>
         </div>
@@ -793,47 +1025,6 @@ export default function FacultyDashboard() {
           ======================================================= */}
       {activePage === 1 && (
         <div className="space-y-6">
-          {/* ADMIN ASSIGNED ACADEMIC PROFILE BANNER */}
-          <div className="bg-gradient-to-r from-indigo-900 via-indigo-850 to-slate-900 text-white rounded-3xl p-6 shadow-md border border-indigo-700/40">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-indigo-500/20 text-indigo-300 rounded-2xl flex items-center justify-center font-black text-xl border border-indigo-400/30 shrink-0 shadow-inner">
-                  {facultyData.name?.charAt(0) || 'F'}
-                </div>
-                <div>
-                  <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
-                    {facultyData.name}
-                    <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-[10px] font-bold rounded-full border border-emerald-500/30 uppercase">
-                      Activated & Verified
-                    </span>
-                  </h3>
-                  <p className="text-xs text-indigo-200/90 font-medium flex items-center gap-2 mt-0.5">
-                    <Mail className="w-3.5 h-3.5 text-indigo-400" /> {facultyData.email}
-                    {phoneNo && <><span>•</span> <Phone className="w-3.5 h-3.5 text-indigo-400" /> {phoneNo}</>}
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="bg-white/10 backdrop-blur-xs p-3 rounded-2xl border border-white/10 text-center">
-                  <p className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Assigned Lab</p>
-                  <p className="text-xs font-extrabold text-white mt-0.5 truncate">{facultyData.labName || 'General Lab'}</p>
-                </div>
-                <div className="bg-white/10 backdrop-blur-xs p-3 rounded-2xl border border-white/10 text-center">
-                  <p className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Subject & Code</p>
-                  <p className="text-xs font-extrabold text-white mt-0.5 truncate">{subjectName} ({subjectCode})</p>
-                </div>
-                <div className="bg-white/10 backdrop-blur-xs p-3 rounded-2xl border border-white/10 text-center">
-                  <p className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Assigned Section</p>
-                  <p className="text-xs font-extrabold text-emerald-300 mt-0.5 truncate">{facultyData.section || availableSections[0] || 'Section A'}</p>
-                </div>
-                <div className="bg-white/10 backdrop-blur-xs p-3 rounded-2xl border border-white/10 text-center">
-                  <p className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Section Students</p>
-                  <p className="text-xs font-extrabold text-amber-300 mt-0.5">{myStudents.length} Enrolled</p>
-                </div>
-              </div>
-            </div>
-          </div>
           {/* SECTION CONTROLLERS */}
           <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -864,7 +1055,7 @@ export default function FacultyDashboard() {
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setIsBatchOpen(false)} />
                       <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 p-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
-                        {['2024 - 2028', '2023 - 2027', '2022 - 2026', '2025 - 2029'].map((batchOption) => (
+                        {batchOptions.map((batchOption) => (
                           <button
                             key={batchOption}
                             onClick={() => {
@@ -1044,12 +1235,19 @@ export default function FacultyDashboard() {
                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Students with Signature</p>
                 </div>
               </div>
-              <div className="pt-2 flex items-baseline gap-2">
-                <span className="text-4xl font-black text-slate-800">{studentsWithRecordSigned}</span>
-                <span className="text-base font-extrabold text-slate-400">/ {totalStudents}</span>
-                <span className="text-xs text-blue-700 font-bold ml-1.5 bg-blue-100/60 px-2.5 py-1 rounded-lg">
-                  Students Signed
-                </span>
+              <div className="pt-2 flex items-baseline justify-between gap-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-4xl font-black text-slate-800">{studentsWithRecordSigned}</span>
+                  <span className="text-base font-extrabold text-slate-400">/ {totalStudents}</span>
+                </div>
+                <button
+                  onClick={handleExportObservationExcel}
+                  className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition shadow-sm shrink-0 active:scale-95"
+                  title="Download Record & Observation Records as Excel Sheet"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Excel</span>
+                </button>
               </div>
               <div className="text-[11px] text-blue-700 bg-blue-50/80 p-3 rounded-xl font-medium border border-blue-100/40">
                 Shows how many unique students got final record signatures in section {selectedSection}.
@@ -1057,26 +1255,6 @@ export default function FacultyDashboard() {
             </div>
           </div>
 
-          {/* FACULTY CARD SUMMARY */}
-          <div className="bg-slate-900 text-white p-6 rounded-3xl border border-slate-800 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center font-black text-lg shadow-inner">
-                {facultyData.name.charAt(3) || "F"}
-              </div>
-              <div>
-                <p className="text-xs text-blue-400 font-extrabold tracking-widest uppercase">Assigned Faculty Supervisor</p>
-                <h4 className="text-lg font-bold text-slate-50">{facultyData.name}</h4>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-4 text-xs font-mono text-slate-300">
-              <div className="bg-slate-800/80 px-3.5 py-2 rounded-xl border border-slate-700/50">
-                <span className="text-slate-500">SUBJECT:</span> {subjectName}
-              </div>
-              <div className="bg-slate-800/80 px-3.5 py-2 rounded-xl border border-slate-700/50">
-                <span className="text-slate-500">LAB:</span> {facultyData.labName}
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
@@ -1111,7 +1289,7 @@ export default function FacultyDashboard() {
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setIsBatchOpen(false)} />
                     <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 p-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
-                      {['2024 - 2028', '2023 - 2027', '2022 - 2026', '2025 - 2029'].map((batchOption) => (
+                      {batchOptions.map((batchOption) => (
                         <button
                           key={batchOption}
                           onClick={() => {
@@ -1322,7 +1500,7 @@ export default function FacultyDashboard() {
           <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4">
               <div>
-                <h2 className="text-lg font-extrabold text-slate-800">6-Week experiment completion</h2>
+                <h2 className="text-lg font-extrabold text-slate-800">{totalWeeks}-Week experiment completion</h2>
                 <div className="flex flex-wrap items-center gap-2 mt-1">
                   <p className="text-xs text-slate-400">
                     Check off experiment approvals. Tap cells to toggle status (✔ Signed / ✖ Pending).
@@ -1332,12 +1510,30 @@ export default function FacultyDashboard() {
                     <input
                       type="number"
                       min={0}
-                      max={12}
+                      max={totalExercises}
                       value={sessionsCompleted}
                       onChange={(e) => handleUpdateSessionsCompleted(parseInt(e.target.value, 10))}
                       className="w-10 text-center font-black text-xs text-indigo-950 bg-white border border-indigo-300 rounded-lg py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
-                    <span className="text-[11px] font-bold text-indigo-600">/ 12</span>
+                    <span className="text-[11px] font-bold text-indigo-600">/</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={totalWeeks}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        const safeVal = Math.max(1, isNaN(val) ? 6 : val);
+                        setTotalWeeks(safeVal);
+                        localStorage.setItem(`faculty_total_weeks_${user.id}`, safeVal.toString());
+                        if (sessionsCompleted > safeVal * 2) {
+                          setSessionsCompleted(safeVal * 2);
+                          localStorage.setItem(`faculty_sessions_completed_${user.id}`, (safeVal * 2).toString());
+                        }
+                      }}
+                      className="w-10 text-center font-black text-xs text-indigo-950 bg-white border border-indigo-300 rounded-lg py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <span className="text-[11px] font-bold text-indigo-600">weeks ({totalExercises} ex.)</span>
                   </div>
                 </div>
               </div>
@@ -1360,7 +1556,7 @@ export default function FacultyDashboard() {
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setIsBatchOpen(false)} />
                       <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 p-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
-                        {['2024 - 2028', '2023 - 2027', '2022 - 2026', '2025 - 2029'].map((batchOption) => (
+                        {batchOptions.map((batchOption) => (
                           <button
                             key={batchOption}
                             onClick={() => {
@@ -1470,7 +1666,7 @@ export default function FacultyDashboard() {
                     <th rowSpan={2} className="px-4 py-4 border-r border-slate-100 min-w-[90px]">Roll No</th>
                     <th rowSpan={2} className="px-4 py-4 border-r border-slate-100 min-w-[140px]">Student Name</th>
                     <th rowSpan={2} className="px-4 py-4 border-r border-slate-100 min-w-[110px]">Register No</th>
-                    {[1, 2, 3, 4, 5, 6].map((week) => (
+                    {Array.from({ length: totalWeeks }, (_, i) => i + 1).map((week) => (
                       <th 
                         key={week} 
                         colSpan={2} 
@@ -1482,11 +1678,11 @@ export default function FacultyDashboard() {
                   </tr>
                   {/* Row 2 headings: Experiment labels */}
                   <tr className="bg-slate-50 text-[9px] font-black uppercase text-slate-500 tracking-wide border-b border-slate-200">
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((expIdx) => (
+                    {Array.from({ length: totalExercises }, (_, i) => i + 1).map((expIdx) => (
                       <th 
                         key={expIdx} 
                         className="px-2 py-3 text-center border-r border-slate-100 min-w-[70px] hover:bg-slate-100/50 transition cursor-help"
-                        title={LAB_EXERCISES[expIdx - 1]?.name}
+                        title={LAB_EXERCISES[expIdx - 1]?.name || `Experiment ${expIdx}`}
                       >
                         Exp {expIdx}
                       </th>
@@ -1500,7 +1696,7 @@ export default function FacultyDashboard() {
                       <td className="px-4 py-4 font-mono font-bold text-slate-700 border-r border-slate-100">{st.rollNo}</td>
                       <td className="px-4 py-4 font-extrabold text-slate-800 border-r border-slate-100">{st.name}</td>
                       <td className="px-4 py-4 font-semibold text-slate-500 border-r border-slate-100">{st.registerNo}</td>
-                                         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((expIdx) => {
+                      {Array.from({ length: totalExercises }, (_, i) => i + 1).map((expIdx) => {
                         const cellState = signoffState[st.id]?.[expIdx] || { observation: 'none', record: 'tick' };
                         const status = notebookMode === 'observation' ? cellState.observation : cellState.record;
                         const hasObsMark = cellState.observationMarks !== undefined && cellState.observationMarks !== '' && cellState.observationMarks !== null;
@@ -1529,14 +1725,32 @@ export default function FacultyDashboard() {
                                {notebookMode === 'observation' ? (
                                 <div className="flex flex-col items-center gap-1 group/obs">
                                   <input
+                                    id={`mark-input-${idx}-${expIdx}`}
                                     type="text"
                                     value={cellState.observationMarks !== undefined ? cellState.observationMarks : ''}
                                     onChange={(e) => handleLocalMarksChange(st.id, expIdx, e.target.value)}
                                     onBlur={(e) => handleSaveMarks(st.id, expIdx, e.target.value)}
                                     onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
+                                      if (e.key === 'Enter' || e.key === 'ArrowDown') {
+                                        e.preventDefault();
                                         handleSaveMarks(st.id, expIdx, (e.target as HTMLInputElement).value);
                                         (e.target as HTMLInputElement).blur();
+                                        focusMarkInput(idx + 1, expIdx);
+                                      } else if (e.key === 'ArrowUp') {
+                                        e.preventDefault();
+                                        handleSaveMarks(st.id, expIdx, (e.target as HTMLInputElement).value);
+                                        (e.target as HTMLInputElement).blur();
+                                        focusMarkInput(idx - 1, expIdx);
+                                      } else if (e.key === 'ArrowLeft') {
+                                        e.preventDefault();
+                                        handleSaveMarks(st.id, expIdx, (e.target as HTMLInputElement).value);
+                                        (e.target as HTMLInputElement).blur();
+                                        focusMarkInput(idx, expIdx - 1);
+                                      } else if (e.key === 'ArrowRight') {
+                                        e.preventDefault();
+                                        handleSaveMarks(st.id, expIdx, (e.target as HTMLInputElement).value);
+                                        (e.target as HTMLInputElement).blur();
+                                        focusMarkInput(idx, expIdx + 1);
                                       }
                                     }}
                                     className={`w-14 text-center rounded-lg py-1 font-extrabold text-xs transition-all shadow-xs focus:outline-none focus:ring-2 ${

@@ -24,6 +24,9 @@ import {
   ClipboardCheck,
   BookOpen,
   FileText,
+  FileSpreadsheet,
+  FileCode,
+  File,
   Phone,
   Mail,
   User as UserIcon,
@@ -71,14 +74,49 @@ function formatRollNo(rollNo: string | undefined | null): string {
 
 export default function FacultyDashboard() {
   const { user, updateProfilePic } = useAuth();
-  const { students, getFacultyData, getFacultyStudents, updateStudentAttendance, updateBatchStudentAttendance, updateSignoff, refreshData } = useAcademicData();
+  const { students, getFacultyData, getFacultyStudents, updateStudentAttendance, updateBatchStudentAttendance, updateSignoff, updateBatchSignoff, refreshData } = useAcademicData();
   const { tab } = useParams<{ tab?: string }>();
 
   // Selected Section State (Default: empty, synced dynamically)
-  const [selectedSection, setSelectedSection] = useState<string>('');
+  const [selectedSection, setSelectedSection] = useState<string>(() => {
+    const saved = localStorage.getItem(`faculty_selected_section_${user?.id || 'gen'}`);
+    return saved || '';
+  });
 
   // Selected Batch Year State (Default: 2024 - 2028)
-  const [selectedBatch, setSelectedBatch] = useState<string>('2024 - 2028');
+  const [selectedBatch, setSelectedBatch] = useState<string>(() => {
+    const saved = localStorage.getItem(`faculty_selected_batch_${user?.id || 'gen'}`);
+    return saved || '2024 - 2028';
+  });
+
+  useEffect(() => {
+    if (selectedSection) {
+      localStorage.setItem(`faculty_selected_section_${user?.id || 'gen'}`, selectedSection);
+    }
+  }, [selectedSection, user?.id]);
+
+  useEffect(() => {
+    if (selectedBatch) {
+      localStorage.setItem(`faculty_selected_batch_${user?.id || 'gen'}`, selectedBatch);
+    }
+  }, [selectedBatch, user?.id]);
+
+  const [dbBatches, setDbBatches] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (user?.token) {
+      fetch("/api/admin/batches", {
+        headers: {
+          "Authorization": `Bearer ${user.token}`
+        }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.batches) setDbBatches(data.batches);
+      })
+      .catch(err => console.error("Error fetching batches in FacultyDashboard:", err));
+    }
+  }, [user?.token]);
 
   // Popover menu open state variables
   const [isSectionOpen, setIsSectionOpen] = useState<boolean>(false);
@@ -110,6 +148,13 @@ export default function FacultyDashboard() {
     }
   }, [tab]);
 
+  // Total Weeks customizable by the faculty
+  const [totalWeeks, setTotalWeeks] = useState<number>(() => {
+    const saved = localStorage.getItem(`faculty_total_weeks_${user.id}`);
+    return saved !== null ? parseInt(saved, 10) : 6;
+  });
+  const totalExercises = totalWeeks * 2;
+
   // Completed Lab Sessions Counter (Manually editable by Faculty & saved in localStorage)
   const [sessionsCompleted, setSessionsCompleted] = useState<number>(() => {
     const saved = localStorage.getItem(`faculty_sessions_completed_${user.id}`);
@@ -117,7 +162,7 @@ export default function FacultyDashboard() {
   });
 
   const handleUpdateSessionsCompleted = (val: number) => {
-    const safeVal = Math.max(0, Math.min(12, isNaN(val) ? 0 : val));
+    const safeVal = Math.max(0, Math.min(totalExercises, isNaN(val) ? 0 : val));
     setSessionsCompleted(safeVal);
     localStorage.setItem(`faculty_sessions_completed_${user.id}`, safeVal.toString());
   };
@@ -128,12 +173,7 @@ export default function FacultyDashboard() {
   const [showMyTimetableModal, setShowMyTimetableModal] = useState(false);
   const [hasPromptedExpModal, setHasPromptedExpModal] = useState(false);
 
-  useEffect(() => {
-    if (activePage === 3 && !hasPromptedExpModal) {
-      setShowTodayExpModal(true);
-      setHasPromptedExpModal(true);
-    }
-  }, [activePage, hasPromptedExpModal]);
+
 
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -207,9 +247,26 @@ export default function FacultyDashboard() {
 
   // Get Faculty phone, subject code, etc. based on ID or defaults
   const phoneNo = facultyData.phone || (user.id === "F01" ? "+91 94451 98721" : user.id === "F02" ? "+91 98404 12345" : "+91 91500 54321");
-  const subjectName = facultyData.subjectName || facultyData.subjectsHandled?.[0] || "General Lab";
-  const subjectCode = facultyData.subjectCode || "";
+  // Dynamically resolve section-specific subject configuration if assignedSectionMappings is present
+  const sectionMapping = facultyData?.assignedSectionMappings?.find((m: any) => {
+    return m.sectionId === selectedSection || m.sectionName?.toLowerCase() === selectedSection.toLowerCase();
+  });
+
+  const subjectName = sectionMapping?.subjectName || facultyData.subjectName || facultyData.subjectsHandled?.[0] || "General Lab";
+  const subjectCode = sectionMapping?.subjectCode || facultyData.subjectCode || "";
+  const labName = sectionMapping?.labName || facultyData.labName || "";
   const today = selectedDate;
+
+  const currentSectionId = sectionMapping?.sectionId || "";
+  const getFacultyTimetableData = (fId: string, fEmail: string, secId: string) => {
+    if (secId) {
+      const key = `faculty_timetable_${fId}_${secId}`;
+      const keyEmail = `faculty_timetable_${fEmail}_${secId}`;
+      const val = localStorage.getItem(key) || localStorage.getItem(keyEmail);
+      if (val) return val;
+    }
+    return localStorage.getItem(`faculty_timetable_${fId}`) || localStorage.getItem(`faculty_timetable_${fEmail}`) || null;
+  };
 
   // Helper for consistent subject key construction (prefix faculty identity for strict multi-faculty isolation)
   const codeClean = (subjectCode || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "_");
@@ -221,17 +278,58 @@ export default function FacultyDashboard() {
   // Restrict students to only those assigned to this faculty member / section
   const myStudents = getFacultyStudents(user.email || user.id);
 
-  // List of all sections assigned to or handled by this faculty
-  const myTimetableSections = facultyData?.timetable?.map((slot: any) => slot.batch) || [];
-  const myStudentSections = myStudents.map((s: any) => s.section);
-  const assignedSectionLabel = facultyData?.section ? [facultyData.section] : [];
-  const rawSections = Array.from(new Set([...myTimetableSections, ...myStudentSections, ...assignedSectionLabel])).filter(Boolean).sort();
+  // Standardize and merge DB batch years with fallback defaults
+  const dbBatchYears = dbBatches.map(b => {
+    const y = b.year || '';
+    if (y && !y.includes(' - ') && y.includes('-')) {
+      return y.replace('-', ' - ');
+    }
+    return y;
+  }).filter(Boolean);
+
+  const batchOptions = Array.from(new Set([
+    ...dbBatchYears,
+    '2024 - 2028',
+    '2023 - 2027',
+    '2022 - 2026',
+    '2025 - 2029'
+  ])).sort((a, b) => b.localeCompare(a));
+
+  // Filter students belonging to the currently selected batch (by database ID, or roll number starting year prefix, or batch string)
+  const batchStudents = myStudents.filter((s: any) => {
+    const targetYearClean = selectedBatch.replace(/\s+/g, '');
+    const matchedDbBatch = dbBatches.find((b: any) => (b.year || '').replace(/\s+/g, '') === targetYearClean);
+    if (matchedDbBatch && (s.batchId === matchedDbBatch.id || s.batchId === matchedDbBatch._id)) {
+      return true;
+    }
+    const yearPrefix = selectedBatch.split('-')[0].trim(); // e.g. "2024"
+    if (s.rollNo && String(s.rollNo).startsWith(yearPrefix)) {
+      return true;
+    }
+    if (s.batch === selectedBatch || s.batchName === selectedBatch) {
+      return true;
+    }
+    return false;
+  });
+
+  // List of all sections assigned to or handled by this faculty under the selected batch
+  const myStudentSections = batchStudents.map((s: any) => s.section);
+  
+  let rawSections = Array.from(new Set(myStudentSections)).filter(Boolean).sort();
+  
+  // Fallback if no student sections exist for selected batch
+  if (rawSections.length === 0) {
+    const myTimetableSections = facultyData?.timetable?.map((slot: any) => slot.batch) || [];
+    const assignedSectionLabel = facultyData?.section ? [facultyData.section] : [];
+    rawSections = Array.from(new Set([...myTimetableSections, ...assignedSectionLabel])).filter(Boolean).sort();
+  }
+
   const availableSections = rawSections.length > 1 ? ['All Sections', ...rawSections] : (rawSections.length === 1 ? rawSections : ['Assigned Section']);
 
   // Filter students belonging to the currently selected section
   const sectionStudents = (!selectedSection || selectedSection === 'All' || selectedSection === 'All Sections')
-    ? myStudents
-    : myStudents.filter(
+    ? batchStudents
+    : batchStudents.filter(
         (student) =>
           student.section === selectedSection ||
           student.batchId === selectedSection ||
@@ -264,7 +362,7 @@ export default function FacultyDashboard() {
   // Resolve Subject Short Form matching Admin Batch Creation
   const resolveFacultyShortForm = (fSubName: string, fSubCode: string, fId: string, fEmail: string): string => {
     // 1. Check custom saved timetable for faculty
-    const savedRaw = localStorage.getItem(`faculty_timetable_${fId}`) || localStorage.getItem(`faculty_timetable_${fEmail}`);
+    const savedRaw = getFacultyTimetableData(fId, fEmail, currentSectionId);
     if (savedRaw) {
       try {
         const parsed = JSON.parse(savedRaw);
@@ -312,7 +410,7 @@ export default function FacultyDashboard() {
 
   const sendClassEmailAlert = async (silent = true) => {
     const savedShortForm = resolveFacultyShortForm(subjectName, subjectCode, user.id, user.email);
-    const savedRaw = localStorage.getItem(`faculty_timetable_${user.id}`) || localStorage.getItem(`faculty_timetable_${user.email}`) || null;
+    const savedRaw = getFacultyTimetableData(user.id, user.email, currentSectionId);
     let savedPeriod: string | null = null;
     if (savedRaw) {
       try {
@@ -340,7 +438,7 @@ export default function FacultyDashboard() {
       calculatedPeriod = savedPeriod;
     }
 
-    const currentDateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    const currentDateStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
 
     try {
       const res = await fetch('/api/faculty/send-class-email', {
@@ -412,6 +510,53 @@ export default function FacultyDashboard() {
     }
   }, [availableSections, selectedSection]);
 
+  // Synchronize selectedBatch to faculty's assigned batch if there is no localStorage value saved
+  useEffect(() => {
+    if (facultyData && dbBatches.length > 0) {
+      const savedBatch = localStorage.getItem(`faculty_selected_batch_${user?.id || 'gen'}`);
+      if (!savedBatch) {
+        let targetBatch = '';
+        if (facultyData.batchId) {
+          const found = dbBatches.find((b: any) => b.id === facultyData.batchId || b._id === facultyData.batchId);
+          if (found) {
+            const y = found.year || '';
+            targetBatch = y.includes('-') && !y.includes(' - ') ? y.replace('-', ' - ') : y;
+          }
+        }
+        if (!targetBatch && facultyData.batch) {
+          const bVal = facultyData.batch;
+          targetBatch = bVal.includes('-') && !bVal.includes(' - ') ? bVal.replace('-', ' - ') : bVal;
+        }
+
+        if (targetBatch && targetBatch !== selectedBatch) {
+          setSelectedBatch(targetBatch);
+        }
+      }
+    }
+  }, [facultyData, dbBatches, user?.id, selectedBatch]);
+
+  // Synchronize selectedSection to faculty's assigned section if there is no localStorage value saved
+  useEffect(() => {
+    if (facultyData && availableSections.length > 0) {
+      const savedSection = localStorage.getItem(`faculty_selected_section_${user?.id || 'gen'}`);
+      if (!savedSection) {
+        let targetSection = '';
+        if (facultyData.sectionId) {
+          const found = availableSections.find((s: any) => String(s).toLowerCase() === String(facultyData.sectionId).toLowerCase()) as string;
+          if (found) targetSection = found;
+        }
+        if (!targetSection && facultyData.section) {
+          const found = availableSections.find((s: any) => String(s).toLowerCase() === String(facultyData.section).toLowerCase()) as string;
+          if (found) targetSection = found;
+        }
+
+        if (targetSection && targetSection !== selectedSection) {
+          setSelectedSection(targetSection);
+        }
+      }
+    }
+  }, [facultyData, availableSections, user?.id, selectedSection]);
+
   // Synchronize state when the selected section or students list changes.
   // On first load for a section: restore from DB. On subsequent students refreshes: only fill in missing entries.
   useEffect(() => {
@@ -453,7 +598,7 @@ export default function FacultyDashboard() {
 
         // Build signoff state (always re-computed from latest DB data)
         newSignoffs[student.id] = {};
-        for (let i = 1; i <= 12; i++) {
+        for (let i = 1; i <= totalExercises; i++) {
           const targetExpId = `exp-${subjectKey}-${i}`;
           const targetAsgId = `asg-${subjectKey}-${i}`;
 
@@ -480,7 +625,7 @@ export default function FacultyDashboard() {
             defaultMarks = exp.score !== undefined && exp.score !== null && exp.score !== ''
               ? exp.score.toString()
               : (exp.status === 'Approved' ? '10' : (exp.status === 'Absent' || exp.score === 'A' ? 'A' : ''));
-          } else if (isAbsentToday && i === Math.min(12, Math.max(1, sessionsCompleted))) {
+          } else if (isAbsentToday && i === Math.min(totalExercises, Math.max(1, sessionsCompleted))) {
             defaultObsStatus = 'cross';
             defaultMarks = 'A';
           }
@@ -530,7 +675,7 @@ export default function FacultyDashboard() {
   const attendancePercentage = totalStudents > 0 ? Math.round(((presentCount + odCount) / totalStudents) * 100) : 0;
 
   // Active Experiment Index (based on Sessions Completed)
-  const currentActiveExpIdx = Math.min(12, Math.max(1, sessionsCompleted));
+  const currentActiveExpIdx = Math.min(totalExercises, Math.max(1, sessionsCompleted));
 
   // Signed Student Counts for Current Active Session / Experiment
   const studentsWithObservationSignedActive = sectionStudents.filter(student => {
@@ -542,8 +687,8 @@ export default function FacultyDashboard() {
     return signoffState[student.id]?.[currentActiveExpIdx]?.record === 'tick';
   }).length;
 
-  // Experiment-wise Detailed Signoff Breakdown for all 12 Experiments
-  const experimentSignoffBreakdown = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(expIdx => {
+  // Experiment-wise Detailed Signoff Breakdown for all customizable Experiments
+  const experimentSignoffBreakdown = Array.from({ length: totalExercises }, (_, i) => i + 1).map(expIdx => {
     const obsSigned = sectionStudents.filter(student => {
       const cell = signoffState[student.id]?.[expIdx];
       return cell?.observation === 'tick' || (cell?.observationMarks !== undefined && cell?.observationMarks !== '' && cell?.observationMarks !== null);
@@ -727,7 +872,7 @@ export default function FacultyDashboard() {
     setAttendanceSavedMessage(null);
 
     // Auto sync Observation Marks based on Attendance status
-    const targetExpIdx = Math.min(12, Math.max(1, sessionsCompleted));
+    const targetExpIdx = Math.min(totalExercises, Math.max(1, sessionsCompleted));
     setSignoffState(prev => {
       const studentState = prev[studentId] || {};
       const currentExpState = studentState[targetExpIdx] || { observation: 'none', record: 'none' };
@@ -859,8 +1004,8 @@ export default function FacultyDashboard() {
   const isAfterCollegeHours = () => {
     const now = new Date();
     const minutes = now.getHours() * 60 + now.getMinutes();
-    // College working hours: 8:00 AM (480 mins) to 3:30 PM (930 mins)
-    return minutes > 930 || minutes < 480;
+    // College working hours: 7:30 AM (450 mins) to 4:30 PM (990 mins)
+    return minutes > 990 || minutes < 450;
   };
 
   const focusMarkInput = (stIdx: number, expIdx: number) => {
@@ -977,11 +1122,12 @@ export default function FacultyDashboard() {
   };
 
   const handleQuickMarkAllPresent = async () => {
-    const targetExpIdx = Math.min(12, Math.max(1, sessionsCompleted));
+    const targetExpIdx = Math.min(totalExercises, Math.max(1, sessionsCompleted));
     const isAfterHours = isAfterCollegeHours();
     const markToApply = isAfterHours ? 'F/10' : '10';
 
     const updatedState = { ...signoffState };
+    const batchItems: any[] = [];
 
     for (const student of sectionStudents) {
       if (attendanceState[student.id] !== 'Absent') {
@@ -996,20 +1142,25 @@ export default function FacultyDashboard() {
           }
         };
 
-        try {
-          await updateSignoff(student.id, targetExpIdx, {
-            observationMarks: markToApply,
-            observationStatus: 'tick',
-            subjectCode,
-            subjectName
-          });
-        } catch (err) {
-          console.error(err);
-        }
+        batchItems.push({
+          studentId: student.id,
+          experimentIndex: targetExpIdx,
+          observationMarks: markToApply,
+          observationStatus: 'tick'
+        });
       }
     }
 
+    // Instantly update UI (optimistic update)
     setSignoffState(updatedState);
+
+    if (batchItems.length > 0) {
+      try {
+        await updateBatchSignoff(batchItems, subjectCode, subjectName);
+      } catch (err) {
+        console.error(err);
+      }
+    }
   };
 
   // CSV Export helper function using Blob
@@ -1050,69 +1201,122 @@ export default function FacultyDashboard() {
         ['PANIMALAR ENGINEERING COLLEGE'],
         ['DEPARTMENT OF ARTIFICIAL INTELLIGENCE & DATA SCIENCE'],
         [`LABORATORY OBSERVATION RECORDS & MARKS REPORT — SECTION ${selectedSection}`],
-        [`Subject: ${subjectName}${subjectCode ? ` (${subjectCode})` : ''} | Batch: ${selectedBatch} | Date: ${new Date().toLocaleDateString()}`],
+        [`Subject: ${subjectName}${subjectCode ? ` (${subjectCode})` : ''} | Batch: ${selectedBatch} | Date: ${new Date().toLocaleDateString('en-GB')}`],
         [] // blank row
       ];
 
-      const headers = [
-        'S.NO', 'ROLL NO', 'REGISTER NUMBER', 'STUDENT NAME',
-        'EXP 1 MARKS', 'EXP 1 STATUS',
-        'EXP 2 MARKS', 'EXP 2 STATUS',
-        'EXP 3 MARKS', 'EXP 3 STATUS',
-        'EXP 4 MARKS', 'EXP 4 STATUS',
-        'EXP 5 MARKS', 'EXP 5 STATUS',
-        'EXP 6 MARKS', 'EXP 6 STATUS',
-        'EXP 7 MARKS', 'EXP 7 STATUS',
-        'EXP 8 MARKS', 'EXP 8 STATUS',
-        'EXP 9 MARKS', 'EXP 9 STATUS',
-        'EXP 10 MARKS', 'EXP 10 STATUS',
-        'EXP 11 MARKS', 'EXP 11 STATUS',
-        'EXP 12 MARKS', 'EXP 12 STATUS',
-        'TOTAL OBSERVATION MARKS', 'AVERAGE MARKS', 'SIGNATURE STATUS'
-      ];
+      // Row 1: Week headers (each week spans 2 exp columns)
+      const weekHeader: any[] = ['S.NO', 'ROLL NO', 'STUDENT NAME', 'REGISTER NUMBER'];
+      // Row 2: Exp headers
+      const expHeader: any[]  = ['', '', '', ''];
 
+      for (let w = 1; w <= totalWeeks; w++) {
+        weekHeader.push(`WEEK ${w}`, '');
+        expHeader.push(`EXP ${w * 2 - 1}`, `EXP ${w * 2}`);
+      }
+
+      weekHeader.push('TOTAL MARKS', 'AVERAGE MARKS', 'REMARKS');
+      expHeader.push('', '', '');
+
+      // Build student data rows — reading directly from live signoffState
       const studentRows = sectionStudents.map((st, idx) => {
         let totalMarks = 0;
         let evalCount = 0;
-        let hasSignature = false;
+        let hasAnyEntry = false;
 
-        const row: any[] = [idx + 1, st.rollNo, st.registerNo, st.name];
+        const row: any[] = [idx + 1, st.rollNo || '-', st.name || '-', st.registerNo || '-'];
 
-        for (let expIdx = 1; expIdx <= 12; expIdx++) {
+        for (let expIdx = 1; expIdx <= totalExercises; expIdx++) {
           const state = signoffState[st.id]?.[expIdx];
-          const markStr = state?.observationMarks;
-          const markNum = markStr !== undefined && markStr !== '' && markStr !== null ? Number(markStr) : null;
-          
-          const obsVal = state?.observation || 'none';
-          const statusText = obsVal === 'tick' ? 'Signed' : (obsVal === 'cross' ? 'Rejected' : 'Pending');
+          const markStr = (state?.observationMarks ?? '').toString().trim();
+          const isStudentAbsent = attendanceState[st.id] === 'Absent';
 
-          if (markNum !== null && !isNaN(markNum)) {
-            totalMarks += markNum;
-            evalCount++;
-          }
-          if (obsVal === 'tick' || markNum !== null) {
-            hasSignature = true;
+          let displayMark: any = '-';
+
+          if (markStr === '') {
+            // No mark entered — show Absent auto-fill if student is absent for current active exp
+            if (isStudentAbsent && expIdx === currentActiveExpIdx) {
+              displayMark = 'A';
+            } else {
+              displayMark = '-';
+            }
+          } else if (markStr === 'A' || markStr.startsWith('A/')) {
+            // Absent — show full value e.g. "A" or "A/10"
+            displayMark = markStr;
+            hasAnyEntry = true;
+          } else if (markStr === 'OD' || markStr.startsWith('OD/')) {
+            displayMark = markStr;
+            hasAnyEntry = true;
+          } else if (markStr.startsWith('F/') || markStr === 'F') {
+            // After-hours mark — show full value e.g. "F/10"
+            displayMark = markStr;
+            // Extract numeric part for totalling
+            const numPart = Number(markStr.replace(/^F\//i, ''));
+            if (!isNaN(numPart)) { totalMarks += numPart; evalCount++; }
+            hasAnyEntry = true;
+          } else if (markStr.startsWith('L/') || markStr === 'L') {
+            // Late mark — show full value e.g. "L/10"
+            displayMark = markStr;
+            const numPart = Number(markStr.replace(/^L\//i, ''));
+            if (!isNaN(numPart)) { totalMarks += numPart; evalCount++; }
+            hasAnyEntry = true;
+          } else {
+            // Plain numeric mark
+            const num = Number(markStr);
+            if (!isNaN(num)) {
+              displayMark = num;
+              totalMarks += num;
+              evalCount++;
+            } else {
+              displayMark = markStr;
+            }
+            hasAnyEntry = true;
           }
 
-          row.push(markNum !== null ? markNum : '-', statusText);
+          row.push(displayMark);
         }
 
         const avgMarks = evalCount > 0 ? (totalMarks / evalCount).toFixed(1) : '-';
-        row.push(totalMarks, avgMarks, hasSignature ? 'Signed' : 'Not Signed');
+        const remarks = hasAnyEntry
+          ? (signoffState[st.id]?.[currentActiveExpIdx]?.observation === 'tick' ? 'Signed' : 'Evaluated')
+          : 'Pending';
+        row.push(evalCount > 0 ? totalMarks : '-', avgMarks, remarks);
         return row;
       });
 
-      const ws = XLSX.utils.aoa_to_sheet([...titleRows, headers, ...studentRows]);
+      const ws = XLSX.utils.aoa_to_sheet([...titleRows, weekHeader, expHeader, ...studentRows]);
+
+      // Merge cells: student info columns span both header rows; WEEK columns span 2 exp cols
+      const merges: XLSX.Range[] = [
+        { s: { r: 5, c: 0 }, e: { r: 6, c: 0 } }, // S.NO
+        { s: { r: 5, c: 1 }, e: { r: 6, c: 1 } }, // ROLL NO
+        { s: { r: 5, c: 2 }, e: { r: 6, c: 2 } }, // STUDENT NAME
+        { s: { r: 5, c: 3 }, e: { r: 6, c: 3 } }, // REGISTER NUMBER
+      ];
+
+      for (let w = 1; w <= totalWeeks; w++) {
+        const startCol = 4 + (w - 1) * 2;
+        merges.push({ s: { r: 5, c: startCol }, e: { r: 5, c: startCol + 1 } }); // WEEK W spans 2 exp cols
+      }
+
+      // Trailing summary columns also span both header rows
+      merges.push(
+        { s: { r: 5, c: 4 + totalExercises     }, e: { r: 6, c: 4 + totalExercises     } }, // TOTAL MARKS
+        { s: { r: 5, c: 4 + totalExercises + 1 }, e: { r: 6, c: 4 + totalExercises + 1 } }, // AVERAGE MARKS
+        { s: { r: 5, c: 4 + totalExercises + 2 }, e: { r: 6, c: 4 + totalExercises + 2 } }  // REMARKS
+      );
+
+      ws['!merges'] = merges;
 
       ws['!cols'] = [
-        { wch: 6 },  // S.No
-        { wch: 12 }, // Roll No
-        { wch: 16 }, // Register No
-        { wch: 25 }, // Name
-        ...Array(24).fill({ wch: 12 }),
-        { wch: 24 }, // Total Marks
+        { wch: 5  }, // S.No
+        { wch: 16 }, // Roll No
+        { wch: 26 }, // Student Name
+        { wch: 18 }, // Register No
+        ...Array(totalExercises).fill({ wch: 9 }), // Exp mark columns
+        { wch: 14 }, // Total Marks
         { wch: 14 }, // Avg Marks
-        { wch: 18 }, // Signature Status
+        { wch: 14 }, // Remarks
       ];
 
       const wb = XLSX.utils.book_new();
@@ -1128,18 +1332,16 @@ export default function FacultyDashboard() {
   // Export Page 3 (Sign-off Matrix) to Excel (CSV)
   const handleExportSignoffMatrix = () => {
     const headers = [
-      'S.No', 'Roll No', 'Student Name', 'Register Number',
-      'W1-E1 Obs', 'W1-E1 Rec', 'W1-E2 Obs', 'W1-E2 Rec',
-      'W2-E3 Obs', 'W2-E3 Rec', 'W2-E4 Obs', 'W2-E4 Rec',
-      'W3-E5 Obs', 'W3-E5 Rec', 'W3-E6 Obs', 'W3-E6 Rec',
-      'W4-E7 Obs', 'W4-E7 Rec', 'W4-E8 Obs', 'W4-E8 Rec',
-      'W5-E9 Obs', 'W5-E9 Rec', 'W5-E10 Obs', 'W5-E10 Rec',
-      'W6-E11 Obs', 'W6-E11 Rec', 'W6-E12 Obs', 'W6-E12 Rec'
+      'S.No', 'Roll No', 'Student Name', 'Register Number'
     ];
+    for (let i = 1; i <= totalExercises; i++) {
+      const weekIdx = Math.ceil(i / 2);
+      headers.push(`W${weekIdx}-E${i} Obs`, `W${weekIdx}-E${i} Rec`);
+    }
 
     const rows = sectionStudents.map((st, idx) => {
       const row = [(idx + 1).toString(), st.rollNo, st.name, st.registerNo];
-      for (let expIdx = 1; expIdx <= 12; expIdx++) {
+      for (let expIdx = 1; expIdx <= totalExercises; expIdx++) {
         const obsVal = signoffState[st.id]?.[expIdx]?.observation || 'none';
         const recVal = signoffState[st.id]?.[expIdx]?.record || 'none';
         const obs = obsVal === 'tick' ? 'Signed' : (obsVal === 'cross' ? 'Incorrect' : 'Pending');
@@ -1174,41 +1376,45 @@ export default function FacultyDashboard() {
   ];
 
   // 2. Observations and Records Completion Counts histogram
-  // Group students by how many notebooks they have completed (out of 12)
-  let obs_10_12 = 0;
-  let obs_7_9 = 0;
-  let obs_4_6 = 0;
-  let obs_0_3 = 0;
+  // Group students by how many notebooks they have completed (out of totalExercises)
+  const q4_start = Math.max(1, Math.round(totalExercises * 0.75));
+  const q3_start = Math.max(1, Math.round(totalExercises * 0.50));
+  const q2_start = Math.max(1, Math.round(totalExercises * 0.25));
 
-  let rec_10_12 = 0;
-  let rec_7_9 = 0;
-  let rec_4_6 = 0;
-  let rec_0_3 = 0;
+  let obs_q4 = 0;
+  let obs_q3 = 0;
+  let obs_q2 = 0;
+  let obs_q1 = 0;
+
+  let rec_q4 = 0;
+  let rec_q3 = 0;
+  let rec_q2 = 0;
+  let rec_q1 = 0;
 
   sectionStudents.forEach(st => {
     let studentObs = 0;
     let studentRec = 0;
-    for (let expIdx = 1; expIdx <= 12; expIdx++) {
+    for (let expIdx = 1; expIdx <= totalExercises; expIdx++) {
       if (signoffState[st.id]?.[expIdx]?.observation === 'tick') studentObs++;
       if (signoffState[st.id]?.[expIdx]?.record === 'tick') studentRec++;
     }
 
-    if (studentObs >= 10) obs_10_12++;
-    else if (studentObs >= 7) obs_7_9++;
-    else if (studentObs >= 4) obs_4_6++;
-    else obs_0_3++;
+    if (studentObs >= q4_start) obs_q4++;
+    else if (studentObs >= q3_start) obs_q3++;
+    else if (studentObs >= q2_start) obs_q2++;
+    else obs_q1++;
 
-    if (studentRec >= 10) rec_10_12++;
-    else if (studentRec >= 7) rec_7_9++;
-    else if (studentRec >= 4) rec_4_6++;
-    else rec_0_3++;
+    if (studentRec >= q4_start) rec_q4++;
+    else if (studentRec >= q3_start) rec_q3++;
+    else if (studentRec >= q2_start) rec_q2++;
+    else rec_q1++;
   });
 
   const signoffHistogramData = [
-    { name: '10-12 Exp', Observations: obs_10_12, Records: rec_10_12 },
-    { name: '7-9 Exp', Observations: obs_7_9, Records: rec_7_9 },
-    { name: '4-6 Exp', Observations: obs_4_6, Records: rec_4_6 },
-    { name: '0-3 Exp', Observations: obs_0_3, Records: rec_0_3 }
+    { name: `${q4_start}-${totalExercises} Exp`, Observations: obs_q4, Records: rec_q4 },
+    { name: `${q3_start}-${q4_start - 1} Exp`, Observations: obs_q3, Records: rec_q3 },
+    { name: `${q2_start}-${q3_start - 1} Exp`, Observations: obs_q2, Records: rec_q2 },
+    { name: `0-${q2_start - 1} Exp`, Observations: obs_q1, Records: rec_q1 }
   ];
 
   return (
@@ -1218,25 +1424,44 @@ export default function FacultyDashboard() {
         <div className="absolute right-0 top-0 opacity-10 pointer-events-none transform translate-x-12 -translate-y-12">
           <Building className="w-96 h-96" />
         </div>
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <span className="px-3 py-1 bg-blue-500/20 text-blue-300 text-[10px] font-bold rounded-full uppercase tracking-widest border border-blue-500/30">
-              Departmental ERP Console
-            </span>
-            <h1 className="text-2xl md:text-3xl font-black mt-2 tracking-tight">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-3 w-full">
+            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
               Panimalar Faculty Dashboard
             </h1>
-            <p className="text-xs text-slate-300 mt-1 font-medium">
-              Welcome, <span className="text-blue-300 font-extrabold">{facultyData.name}</span> &bull; Academic Year 2026-2027
-            </p>
-          </div>
-          <div className="flex items-center gap-3 bg-indigo-900/70 border border-indigo-500/40 px-4 py-2.5 rounded-2xl shadow-inner">
-            <div className="p-2 bg-indigo-500/20 text-indigo-300 rounded-xl shrink-0">
-              <Clock className="w-5 h-5 text-indigo-300" />
-            </div>
-            <div className="text-left">
-              <p className="text-[10px] font-black uppercase text-indigo-300 tracking-wider">College Working Hours</p>
-              <p className="text-xs font-black text-white tracking-wide mt-0.5">8:00 AM – 3:30 PM</p>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-semibold text-slate-300">
+              <span className="flex items-center gap-1.5 bg-blue-500/25 px-2.5 py-1.5 rounded-xl border border-blue-500/30">
+                <span className="text-blue-300 font-extrabold uppercase text-[9px] tracking-wider">Faculty:</span>
+                <strong className="text-white">{facultyData.name}</strong>
+              </span>
+              <span className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1.5 rounded-xl border border-slate-700/50">
+                <span className="text-slate-400 font-extrabold uppercase text-[9px] tracking-wider">Assigned Lab:</span>
+                <strong className="text-white">{labName}</strong>
+              </span>
+              <span className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1.5 rounded-xl border border-slate-700/50">
+                <span className="text-slate-400 font-extrabold uppercase text-[9px] tracking-wider">Subject:</span>
+                <strong className="text-white">{subjectName} {subjectCode ? `(${subjectCode})` : ''}</strong>
+              </span>
+              <span className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1.5 rounded-xl border border-slate-700/50">
+                <span className="text-slate-400 font-extrabold uppercase text-[9px] tracking-wider">Assigned Section:</span>
+                <strong className="text-white">{selectedSection}</strong>
+              </span>
+              <span className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1.5 rounded-xl border border-slate-700/50">
+                <span className="text-slate-400 font-extrabold uppercase text-[9px] tracking-wider">Section Students:</span>
+                <strong className="text-white">{totalStudents}</strong>
+              </span>
+              <span className="flex items-center gap-1.5 bg-indigo-500/25 px-2.5 py-1.5 rounded-xl border border-indigo-500/30">
+                <span className="text-indigo-300 font-extrabold uppercase text-[9px] tracking-wider">Working Hours:</span>
+                <strong className="text-white">7:30 AM - 4:30 PM</strong>
+              </span>
+              {facultyData.labDay && (
+                <span className="flex items-center gap-1.5 bg-amber-500/25 px-2.5 py-1.5 rounded-xl border border-amber-500/30 animate-pulse-slow">
+                  <span className="text-amber-300 font-extrabold uppercase text-[9px] tracking-wider">🗓️ Analyzed Lab:</span>
+                  <strong className="text-white">
+                    {facultyData.labDay} ({facultyData.labPeriod || facultyData.labTime})
+                  </strong>
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -1284,7 +1509,7 @@ export default function FacultyDashboard() {
                 </h4>
                 <div className="mt-2 space-y-1.5">
                   {(() => {
-                    const savedRaw = localStorage.getItem(`faculty_timetable_${user.id}`) || localStorage.getItem(`faculty_timetable_${user.email}`) || null;
+                    const savedRaw = getFacultyTimetableData(user.id, user.email, currentSectionId);
                     let savedPeriod: string | null = null;
                     let savedShortForm: string | null = null;
                     if (savedRaw) {
@@ -1325,187 +1550,251 @@ export default function FacultyDashboard() {
         );
       })()}
 
+      {/* LIVE DATE & TODAY'S PERIOD OF THE DAY BANNER */}
+      <div className="bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-blue-500/10 border border-indigo-200/80 rounded-3xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 bg-indigo-600 text-white rounded-2xl flex items-center justify-center font-black text-sm shrink-0 shadow-sm">
+            <Calendar className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase text-indigo-700 tracking-wider">Today's Date:</span>
+              <span className="text-xs font-black text-slate-800">
+                {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider">Scheduled Class Period:</span>
+              {(() => {
+                const savedRaw = getFacultyTimetableData(user.id, user.email, currentSectionId);
+                let savedPeriod: string | null = null;
+                if (savedRaw) {
+                  try {
+                    const parsed = JSON.parse(savedRaw);
+                    if (parsed?.period) savedPeriod = parsed.period;
+                  } catch { /* silent */ }
+                }
 
+                const daysShort = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+                const currentDayCode = daysShort[new Date().getDay()];
+                const sfUpper = resolveFacultyShortForm(subjectName, subjectCode, user.id, user.email);
+
+                // Panimalar Master Matrix Lookup (Exact Lab vs Theory Period Breakdown)
+                const PANIMALAR_FULL_MATRIX: Record<string, {
+                  labDay: string;
+                  labPeriod: string;
+                  labTag: string;
+                  theory: Record<string, string>;
+                }> = {
+                  KIES: {
+                    labDay: 'FRI',
+                    labPeriod: 'Period 2 & 3 Morning Lab Slot (8.50 AM - 10.30 AM)',
+                    labTag: 'KIES LAB',
+                    theory: {
+                      MON: 'Period 6 (1.15 PM - 1.55 PM)',
+                      TUE: 'Period 2 (8.50 AM - 9.40 AM)',
+                      WED: 'Period 2 (8.50 AM - 9.40 AM)',
+                      THU: 'Period 3 (9.40 AM - 10.30 AM)',
+                      FRI: 'Period 6 (1.15 PM - 1.55 PM)'
+                    }
+                  },
+                  DA: {
+                    labDay: 'TUE',
+                    labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
+                    labTag: 'DA LAB',
+                    theory: {
+                      TUE: 'Period 1 (8.00 AM - 8.50 AM) & Period 7 (1.55 PM - 2.35 PM)',
+                      WED: 'Period 3 (9.40 AM - 10.30 AM) & Period 4 (10.45 AM - 11.40 AM)',
+                      FRI: 'Period 7 (1.55 PM - 2.35 PM)'
+                    }
+                  },
+                  DEV: {
+                    labDay: 'THU',
+                    labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
+                    labTag: 'DEV LAB',
+                    theory: {
+                      WED: 'Period 1 (8.00 AM - 8.50 AM) & Period 8 (2.35 PM - 3.15 PM)',
+                      THU: 'Period 2 (8.50 AM - 9.40 AM)',
+                      FRI: 'Period 8 (2.35 PM - 3.15 PM)'
+                    }
+                  },
+                  TSP: {
+                    labDay: 'MON',
+                    labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
+                    labTag: 'TSP 4 LAB',
+                    theory: {}
+                  }
+                };
+
+                const matrixEntry = PANIMALAR_FULL_MATRIX[sfUpper] || PANIMALAR_FULL_MATRIX['KIES'];
+                const isLabDay = (currentDayCode === matrixEntry.labDay);
+                const theoryPeriod = matrixEntry.theory[currentDayCode];
+
+                if (isLabDay) {
+                  return (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="px-2 py-0.5 bg-amber-500/20 text-amber-900 border border-amber-400/40 rounded-md font-mono font-black text-xs animate-pulse">
+                        🧪 {matrixEntry.labTag}
+                      </span>
+                      <span className="px-2.5 py-0.5 bg-indigo-100 text-indigo-900 font-black rounded-md text-xs">
+                        {savedPeriod || matrixEntry.labPeriod}
+                      </span>
+                      <span className="text-xs font-bold text-slate-600">• Section {selectedSection || 'Section F'}</span>
+                    </div>
+                  );
+                }
+
+                if (theoryPeriod) {
+                  return (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="px-2 py-0.5 bg-blue-100 text-blue-900 border border-blue-300 rounded-md font-mono font-black text-xs">
+                        📖 {sfUpper} (Theory)
+                      </span>
+                      <span className="px-2.5 py-0.5 bg-slate-100 text-slate-800 font-bold rounded-md text-xs">
+                        {theoryPeriod}
+                      </span>
+                      <span className="text-xs font-bold text-slate-600">• Section {selectedSection || 'Section F'}</span>
+                    </div>
+                  );
+                }
+
+                return (
+                  <span className="px-2.5 py-0.5 bg-slate-100 text-slate-500 rounded-md font-extrabold text-xs">
+                    No Class/Lab Session Scheduled Today
+                  </span>
+                );
+              })()}
+            </div>
+
+            {/* UPCOMING NEXT CLASS ROW */}
+            <div className="flex items-center gap-2 mt-1.5">
+              <span className="text-[10px] font-black uppercase text-emerald-700 tracking-wider">🚀 Upcoming Next Class:</span>
+              {(() => {
+                const sfUpper = resolveFacultyShortForm(subjectName, subjectCode, user.id, user.email);
+
+                const PANIMALAR_FULL_MATRIX2: Record<string, {
+                  labDay: string;
+                  labPeriod: string;
+                  labTag: string;
+                  theory: Record<string, string>;
+                }> = {
+                  KIES: {
+                    labDay: 'FRI',
+                    labPeriod: 'Period 2 & 3 Morning Lab Slot (8.50 AM - 10.30 AM)',
+                    labTag: 'KIES LAB',
+                    theory: {
+                      MON: 'Period 6 (1.15 PM - 1.55 PM)',
+                      TUE: 'Period 2 (8.50 AM - 9.40 AM)',
+                      WED: 'Period 2 (8.50 AM - 9.40 AM)',
+                      THU: 'Period 3 (9.40 AM - 10.30 AM)',
+                      FRI: 'Period 6 (1.15 PM - 1.55 PM)'
+                    }
+                  },
+                  DA: {
+                    labDay: 'TUE',
+                    labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
+                    labTag: 'DA LAB',
+                    theory: {
+                      TUE: 'Period 1 (8.00 AM - 8.50 AM) & Period 7 (1.55 PM - 2.35 PM)',
+                      WED: 'Period 3 (9.40 AM - 10.30 AM) & Period 4 (10.45 AM - 11.40 AM)',
+                      FRI: 'Period 7 (1.55 PM - 2.35 PM)'
+                    }
+                  },
+                  DEV: {
+                    labDay: 'THU',
+                    labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
+                    labTag: 'DEV LAB',
+                    theory: {
+                      WED: 'Period 1 (8.00 AM - 8.50 AM) & Period 8 (2.35 PM - 3.15 PM)',
+                      THU: 'Period 2 (8.50 AM - 9.40 AM)',
+                      FRI: 'Period 8 (2.35 PM - 3.15 PM)'
+                    }
+                  },
+                  TSP: {
+                    labDay: 'MON',
+                    labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
+                    labTag: 'TSP 4 LAB',
+                    theory: {}
+                  }
+                };
+
+                const matrixEntry = PANIMALAR_FULL_MATRIX2[sfUpper] || PANIMALAR_FULL_MATRIX2['KIES'];
+                const daysShort = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+                const today = new Date();
+
+                // Build ordered list of all class schedule days
+                const classDays: { code: string; label: string; time: string; isLab: boolean }[] = [];
+                // Lab day entry
+                classDays.push({ code: matrixEntry.labDay, label: matrixEntry.labTag, time: matrixEntry.labPeriod, isLab: true });
+                // Theory days
+                Object.entries(matrixEntry.theory).forEach(([dayCode, timeStr]) => {
+                  classDays.push({ code: dayCode, label: `${sfUpper} (Theory)`, time: timeStr, isLab: false });
+                });
+
+                // Find next class occurrence starting from tomorrow (skip Sunday)
+                let nextDate: Date | null = null;
+                let nextEntry: { code: string; label: string; time: string; isLab: boolean } | null = null;
+
+                for (let offset = 1; offset <= 14; offset++) {
+                  const candidate = new Date(today);
+                  candidate.setDate(today.getDate() + offset);
+                  if (candidate.getDay() === 0) continue; // skip Sunday
+                  const candidateDayCode = daysShort[candidate.getDay()];
+                  const found = classDays.find(c => c.code === candidateDayCode);
+                  if (found) {
+                    nextDate = candidate;
+                    nextEntry = found;
+                    break;
+                  }
+                }
+
+                if (!nextDate || !nextEntry) {
+                  return (
+                    <span className="px-2.5 py-0.5 bg-slate-100 text-slate-400 rounded-md font-bold text-xs">
+                      No upcoming class found in next 2 weeks
+                    </span>
+                  );
+                }
+
+                const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                const nextDayName = dayNames[nextDate.getDay()];
+                const dd = String(nextDate.getDate()).padStart(2, '0');
+                const mm = String(nextDate.getMonth() + 1).padStart(2, '0');
+                const yyyy = nextDate.getFullYear();
+                const nextDateFormatted = `${dd}/${mm}/${yyyy}`;
+                const msPerDay = 1000 * 60 * 60 * 24;
+                const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                const nextMidnight = new Date(nextDate.getFullYear(), nextDate.getMonth(), nextDate.getDate());
+                const daysFromNow = Math.round((nextMidnight.getTime() - todayMidnight.getTime()) / msPerDay);
+                const whenLabel = daysFromNow === 1 ? 'Tomorrow' : daysFromNow === 7 ? 'Next Week' : `In ${daysFromNow} days`;
+
+                return (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className={`px-2 py-0.5 rounded-md font-mono font-black text-xs border ${nextEntry.isLab ? 'bg-emerald-100 text-emerald-900 border-emerald-300' : 'bg-sky-100 text-sky-900 border-sky-300'}`}>
+                      {nextEntry.isLab ? '🧪' : '📖'} {nextEntry.label}
+                    </span>
+                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-800 border border-indigo-200 rounded-md font-black text-xs">
+                      📅 {nextDayName}, {nextDateFormatted}
+                    </span>
+                    <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md font-bold text-xs">
+                      ⏰ {nextEntry.time}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide border ${daysFromNow === 1 ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                      {whenLabel}
+                    </span>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* =======================================================
           PAGE 1: SECTION OVERVIEW & STATISTICS SUMMARY
           ======================================================= */}
       {activePage === 1 && (
         <div className="space-y-6">
-          {/* LIVE DATE & TODAY'S PERIOD OF THE DAY BANNER */}
-          <div className="bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-blue-500/10 border border-indigo-200/80 rounded-3xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5">
-              <div className="w-10 h-10 bg-indigo-600 text-white rounded-2xl flex items-center justify-center font-black text-sm shrink-0 shadow-sm">
-                <Calendar className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black uppercase text-indigo-700 tracking-wider">Today's Date:</span>
-                  <span className="text-xs font-black text-slate-800">
-                    {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider">Scheduled Class Period:</span>
-                  {(() => {
-                    const savedRaw = localStorage.getItem(`faculty_timetable_${user.id}`) || localStorage.getItem(`faculty_timetable_${user.email}`) || null;
-                    let savedPeriod: string | null = null;
-                    if (savedRaw) {
-                      try {
-                        const parsed = JSON.parse(savedRaw);
-                        if (parsed?.period) savedPeriod = parsed.period;
-                      } catch { /* silent */ }
-                    }
-
-                    const daysShort = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-                    const currentDayCode = daysShort[new Date().getDay()];
-                    const sfUpper = resolveFacultyShortForm(subjectName, subjectCode, user.id, user.email);
-
-                    // Panimalar Master Matrix Lookup (Exact Lab vs Theory Period Breakdown)
-                    const PANIMALAR_FULL_MATRIX: Record<string, {
-                      labDay: string;
-                      labPeriod: string;
-                      labTag: string;
-                      theory: Record<string, string>;
-                    }> = {
-                      KIES: {
-                        labDay: 'FRI',
-                        labPeriod: 'Period 2 & 3 Morning Lab Slot (8.50 AM - 10.30 AM)',
-                        labTag: 'KIES LAB',
-                        theory: {
-                          MON: 'Period 6 (1.15 PM - 1.55 PM)',
-                          TUE: 'Period 2 (8.50 AM - 9.40 AM)',
-                          WED: 'Period 2 (8.50 AM - 9.40 AM)',
-                          THU: 'Period 3 (9.40 AM - 10.30 AM)',
-                          FRI: 'Period 6 (1.15 PM - 1.55 PM)'
-                        }
-                      },
-                      DA: {
-                        labDay: 'TUE',
-                        labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
-                        labTag: 'DA LAB',
-                        theory: {
-                          TUE: 'Period 1 (8.00 AM - 8.50 AM) & Period 7 (1.55 PM - 2.35 PM)',
-                          WED: 'Period 3 (9.40 AM - 10.30 AM) & Period 4 (10.45 AM - 11.40 AM)',
-                          FRI: 'Period 7 (1.55 PM - 2.35 PM)'
-                        }
-                      },
-                      DEV: {
-                        labDay: 'THU',
-                        labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
-                        labTag: 'DEV LAB',
-                        theory: {
-                          WED: 'Period 1 (8.00 AM - 8.50 AM) & Period 8 (2.35 PM - 3.15 PM)',
-                          THU: 'Period 2 (8.50 AM - 9.40 AM)',
-                          FRI: 'Period 8 (2.35 PM - 3.15 PM)'
-                        }
-                      },
-                      TSP: {
-                        labDay: 'MON',
-                        labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
-                        labTag: 'TSP 4 LAB',
-                        theory: {}
-                      }
-                    };
-
-                    const matrixEntry = PANIMALAR_FULL_MATRIX[sfUpper] || PANIMALAR_FULL_MATRIX['KIES'];
-                    const isLabDay = (currentDayCode === matrixEntry.labDay);
-                    const theoryPeriod = matrixEntry.theory[currentDayCode];
-
-                    if (isLabDay) {
-                      return (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="px-2 py-0.5 bg-amber-500/20 text-amber-900 border border-amber-400/40 rounded-md font-mono font-black text-xs animate-pulse">
-                            🧪 {matrixEntry.labTag}
-                          </span>
-                          <span className="px-2.5 py-0.5 bg-indigo-100 text-indigo-900 font-black rounded-md text-xs">
-                            {savedPeriod || matrixEntry.labPeriod}
-                          </span>
-                          <span className="text-xs font-bold text-slate-600">• Section {selectedSection || 'Section F'}</span>
-                        </div>
-                      );
-                    }
-
-                    if (theoryPeriod) {
-                      return (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="px-2 py-0.5 bg-blue-100 text-blue-900 border border-blue-300 rounded-md font-mono font-black text-xs">
-                            📖 {sfUpper} (Theory)
-                          </span>
-                          <span className="px-2.5 py-0.5 bg-slate-100 text-slate-800 font-bold rounded-md text-xs">
-                            {theoryPeriod}
-                          </span>
-                          <span className="text-xs font-bold text-slate-600">• Section {selectedSection || 'Section F'}</span>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <span className="px-2.5 py-0.5 bg-slate-100 text-slate-500 rounded-md font-extrabold text-xs">
-                        No Class/Lab Session Scheduled Today
-                      </span>
-                    );
-                  })()}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ADMIN ASSIGNED ACADEMIC PROFILE BANNER */}
-          <div className="bg-gradient-to-r from-indigo-900 via-indigo-850 to-slate-900 text-white rounded-3xl p-6 shadow-md border border-indigo-700/40">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-indigo-500/20 text-indigo-300 rounded-2xl flex items-center justify-center font-black text-xl border border-indigo-400/30 shrink-0 shadow-inner">
-                  {facultyData.name?.charAt(0) || 'F'}
-                </div>
-                <div>
-                  <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
-                    {facultyData.name}
-                    <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-[10px] font-bold rounded-full border border-emerald-500/30 uppercase">
-                      Activated & Verified
-                    </span>
-                  </h3>
-                  <p className="text-xs text-indigo-200/90 font-medium flex items-center gap-2 mt-0.5">
-                    <Mail className="w-3.5 h-3.5 text-indigo-400" /> {facultyData.email}
-                  </p>
-                  <div className="mt-2">
-                    <button
-                      onClick={() => setShowMyTimetableModal(true)}
-                      className="px-3 py-1 bg-indigo-500/25 hover:bg-indigo-500/40 text-indigo-200 border border-indigo-400/30 rounded-xl text-[11px] font-extrabold transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
-                    >
-                      <Calendar className="w-3.5 h-3.5 text-indigo-300" />
-                      <span>My Subject Timetable</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                <div className="bg-white/10 backdrop-blur-xs p-3 rounded-2xl border border-white/10 text-center">
-                  <p className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Assigned Lab</p>
-                  <p className="text-xs font-extrabold text-white mt-0.5 truncate">{facultyData.labName || 'General Lab'}</p>
-                </div>
-                <div className="bg-white/10 backdrop-blur-xs p-3 rounded-2xl border border-white/10 text-center">
-                  <p className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Subject & Code</p>
-                  <p className="text-xs font-extrabold text-white mt-0.5 truncate">{subjectName} ({subjectCode})</p>
-                </div>
-                <div className="bg-white/10 backdrop-blur-xs p-3 rounded-2xl border border-white/10 text-center">
-                  <p className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Assigned Section</p>
-                  <p className="text-xs font-extrabold text-emerald-300 mt-0.5 truncate">{facultyData.section || availableSections[0] || 'Section A'}</p>
-                </div>
-                <div className="bg-white/10 backdrop-blur-xs p-3 rounded-2xl border border-white/10 text-center">
-                  <p className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Section Students</p>
-                  <p className="text-xs font-extrabold text-amber-300 mt-0.5">{myStudents.length} Enrolled</p>
-                </div>
-                <div className="bg-amber-500/20 backdrop-blur-xs p-3 rounded-2xl border border-amber-400/30 text-center col-span-2 sm:col-span-1">
-                  <p className="text-[10px] text-amber-200 font-bold uppercase tracking-wider flex items-center justify-center gap-1">
-                    <Clock className="w-3 h-3 text-amber-300 shrink-0" /> Working Hours
-                  </p>
-                  <p className="text-xs font-black text-amber-300 mt-0.5">8:00 AM – 3:30 PM</p>
-                </div>
-              </div>
-            </div>
-          </div>
           {/* SECTION CONTROLLERS */}
           <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1536,7 +1825,7 @@ export default function FacultyDashboard() {
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setIsBatchOpen(false)} />
                       <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 p-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
-                        {['2024 - 2028', '2023 - 2027', '2022 - 2026', '2025 - 2029'].map((batchOption) => (
+                        {batchOptions.map((batchOption) => (
                           <button
                             key={batchOption}
                             onClick={() => {
@@ -1647,7 +1936,7 @@ export default function FacultyDashboard() {
                   <input
                     type="number"
                     min={0}
-                    max={12}
+                    max={totalExercises}
                     value={sessionsCompleted}
                     onChange={(e) => handleUpdateSessionsCompleted(parseInt(e.target.value, 10))}
                     className="w-14 text-center font-black text-2xl text-indigo-950 bg-indigo-50/70 border border-indigo-200 rounded-xl py-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -1667,7 +1956,27 @@ export default function FacultyDashboard() {
                     </button>
                   </div>
                 </div>
-                <p className="text-[10px] text-indigo-600 font-semibold mt-0.5">Out of 12 exercises</p>
+                <div className="flex items-center gap-1 mt-1 text-[10px] font-semibold text-slate-500">
+                  <span>Out of</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={totalWeeks}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      const safeVal = Math.max(1, isNaN(val) ? 6 : val);
+                      setTotalWeeks(safeVal);
+                      localStorage.setItem(`faculty_total_weeks_${user.id}`, safeVal.toString());
+                      if (sessionsCompleted > safeVal * 2) {
+                        setSessionsCompleted(safeVal * 2);
+                        localStorage.setItem(`faculty_sessions_completed_${user.id}`, (safeVal * 2).toString());
+                      }
+                    }}
+                    className="w-10 text-center font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <span>weeks ({totalExercises} ex.)</span>
+                </div>
               </div>
             </div>
           </div>
@@ -1761,34 +2070,24 @@ export default function FacultyDashboard() {
                   )}
                 </span>
               </div>
-              <div className="text-[11px] text-blue-800 bg-blue-50/80 p-3 rounded-xl font-medium border border-blue-100/40">
-                {studentsWithRecordSignedActive === totalStudents && totalStudents > 0
-                  ? `All ${totalStudents} students in Section ${selectedSection} have received final Record signatures for Session ${currentActiveExpIdx}.`
-                  : `${studentsWithRecordSignedActive} out of ${totalStudents} students have signed Record for Session ${currentActiveExpIdx}.`}
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <div className="text-[11px] text-blue-800 bg-blue-50/80 p-3 rounded-xl font-medium border border-blue-100/40 flex-1">
+                  {studentsWithRecordSignedActive === totalStudents && totalStudents > 0
+                    ? `All ${totalStudents} students in Section ${selectedSection} have received final Record signatures for Session ${currentActiveExpIdx}.`
+                    : `${studentsWithRecordSignedActive} out of ${totalStudents} students have signed Record for Session ${currentActiveExpIdx}.`}
+                </div>
+                <button
+                  onClick={handleExportObservationExcel}
+                  className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition shadow-sm shrink-0 active:scale-95"
+                  title="Download Record & Observation Records as Excel Sheet"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Excel</span>
+                </button>
               </div>
             </div>
           </div>
 
-          {/* FACULTY CARD SUMMARY */}
-          <div className="bg-slate-900 text-white p-6 rounded-3xl border border-slate-800 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center font-black text-lg shadow-inner">
-                {facultyData.name.charAt(3) || "F"}
-              </div>
-              <div>
-                <p className="text-xs text-blue-400 font-extrabold tracking-widest uppercase">Assigned Faculty Supervisor</p>
-                <h4 className="text-lg font-bold text-slate-50">{facultyData.name}</h4>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-4 text-xs font-mono text-slate-300">
-              <div className="bg-slate-800/80 px-3.5 py-2 rounded-xl border border-slate-700/50">
-                <span className="text-slate-500">SUBJECT:</span> {subjectName}
-              </div>
-              <div className="bg-slate-800/80 px-3.5 py-2 rounded-xl border border-slate-700/50">
-                <span className="text-slate-500">LAB:</span> {facultyData.labName}
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
@@ -1840,7 +2139,7 @@ export default function FacultyDashboard() {
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setIsBatchOpen(false)} />
                     <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 p-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
-                      {['2024 - 2028', '2023 - 2027', '2022 - 2026', '2025 - 2029'].map((batchOption) => (
+                      {batchOptions.map((batchOption) => (
                         <button
                           key={batchOption}
                           onClick={() => {
@@ -2056,21 +2355,11 @@ export default function FacultyDashboard() {
           <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4">
               <div>
-                <h2 className="text-lg font-extrabold text-slate-800">6-Week experiment completion</h2>
+                <h2 className="text-lg font-extrabold text-slate-800">{totalWeeks}-Week experiment completion</h2>
                 <div className="flex flex-wrap items-center gap-2 mt-1">
                   <p className="text-xs text-slate-400">
                     Check off experiment approvals. Tap cells to toggle status (✔ Signed / ✖ Pending).
                   </p>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => setShowTodayExpModal(true)}
-                      className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-3.5 py-1.5 rounded-xl transition shadow-md shadow-indigo-600/20 active:scale-95 cursor-pointer"
-                    >
-                      <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
-                      <span>Conducting Today: Exp {sessionsCompleted} ({LAB_EXERCISES[sessionsCompleted - 1]?.name || `Experiment ${sessionsCompleted}`})</span>
-                      <span className="text-[10px] bg-indigo-800/90 px-2 py-0.5 rounded-md text-indigo-100 font-bold uppercase tracking-wider">Change</span>
-                    </button>
-                  </div>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
@@ -2092,7 +2381,7 @@ export default function FacultyDashboard() {
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setIsBatchOpen(false)} />
                       <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 p-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
-                        {['2024 - 2028', '2023 - 2027', '2022 - 2026', '2025 - 2029'].map((batchOption) => (
+                        {batchOptions.map((batchOption) => (
                           <button
                             key={batchOption}
                             onClick={() => {
@@ -2217,20 +2506,20 @@ export default function FacultyDashboard() {
 
           {/* MAIN GRID SHEET */}
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="overflow-auto max-h-[calc(100vh-260px)] min-h-[420px] relative">
               <table className="w-full text-left border-collapse border-spacing-0">
-                <thead>
+                <thead className="sticky top-0 z-30 bg-slate-50 shadow-xs">
                   {/* Row 1 headings: Week labels */}
                   <tr className="bg-slate-50 text-[10px] font-extrabold uppercase text-slate-400 tracking-widest border-b border-slate-100">
-                    <th rowSpan={2} className="px-4 py-4 text-center border-r border-slate-100">S.No</th>
-                    <th rowSpan={2} className="px-4 py-4 border-r border-slate-100 min-w-[130px] whitespace-nowrap">Roll No</th>
-                    <th rowSpan={2} className="px-4 py-4 border-r border-slate-100 min-w-[140px]">Student Name</th>
-                    <th rowSpan={2} className="px-4 py-4 border-r border-slate-100 min-w-[110px]">Register No</th>
-                    {[1, 2, 3, 4, 5, 6].map((week) => (
+                    <th rowSpan={2} className="sticky top-0 left-0 z-40 bg-slate-50 px-4 py-4 text-center border-r border-slate-200 shadow-2xs">S.No</th>
+                    <th rowSpan={2} className="sticky top-0 left-[55px] z-40 bg-slate-50 px-4 py-4 border-r border-slate-200 min-w-[130px] whitespace-nowrap shadow-2xs">Roll No</th>
+                    <th rowSpan={2} className="sticky top-0 left-[185px] z-40 bg-slate-50 px-4 py-4 border-r border-slate-200 min-w-[140px] shadow-2xs">Student Name</th>
+                    <th rowSpan={2} className="sticky top-0 left-[325px] z-40 bg-slate-50 px-4 py-4 border-r border-slate-200 min-w-[110px] shadow-2xs">Register No</th>
+                    {Array.from({ length: totalWeeks }, (_, i) => i + 1).map((week) => (
                       <th 
                         key={week} 
                         colSpan={2} 
-                        className="px-4 py-3 text-center border-r border-slate-100 bg-blue-50/10 font-black text-blue-900"
+                        className="sticky top-0 z-30 px-4 py-3 text-center border-r border-slate-200 bg-blue-50/90 backdrop-blur-xs font-black text-blue-900 shadow-2xs"
                       >
                         Week {week}
                       </th>
@@ -2238,18 +2527,18 @@ export default function FacultyDashboard() {
                   </tr>
                   {/* Row 2 headings: Experiment labels */}
                   <tr className="bg-slate-50 text-[9px] font-black uppercase text-slate-500 tracking-wide border-b border-slate-200">
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((expIdx) => {
+                    {Array.from({ length: totalExercises }, (_, i) => i + 1).map((expIdx) => {
                       const isConductingToday = expIdx === sessionsCompleted;
                       return (
                         <th 
                           key={expIdx} 
                           onClick={() => handleUpdateSessionsCompleted(expIdx)}
-                          className={`px-2 py-2.5 text-center border-r transition cursor-pointer min-w-[75px] ${
+                          className={`sticky top-[41px] z-30 px-2 py-2.5 text-center border-r transition cursor-pointer min-w-[75px] shadow-2xs ${
                             isConductingToday
                               ? 'bg-indigo-600 text-white border-indigo-700 font-black shadow-md shadow-indigo-600/30'
-                              : 'border-slate-100 hover:bg-slate-100/80 text-slate-600'
+                              : 'bg-slate-50 border-slate-200 hover:bg-slate-100/80 text-slate-600'
                           }`}
-                          title={`Exp ${expIdx}: ${LAB_EXERCISES[expIdx - 1]?.name} (Click to set as today's active experiment)`}
+                          title={`Exp ${expIdx}: ${LAB_EXERCISES[expIdx - 1]?.name || `Experiment ${expIdx}`} (Click to set as today's active experiment)`}
                         >
                           <div className="flex flex-col items-center gap-0.5">
                             <span>Exp {expIdx}</span>
@@ -2265,11 +2554,11 @@ export default function FacultyDashboard() {
                 <tbody className="divide-y divide-slate-100 text-xs">
                   {sectionStudents.map((st, idx) => (
                     <tr key={st.id} className="hover:bg-slate-50/30 transition-colors">
-                      <td className="px-4 py-4 text-center font-bold text-slate-400 border-r border-slate-100 bg-slate-50/20">{idx + 1}</td>
-                      <td className="px-4 py-4 font-mono font-bold text-slate-700 border-r border-slate-100 whitespace-nowrap">{formatRollNo(st.rollNo)}</td>
-                      <td className="px-4 py-4 font-extrabold text-slate-800 border-r border-slate-100">{st.name}</td>
-                      <td className="px-4 py-4 font-semibold text-slate-500 border-r border-slate-100">{st.registerNo}</td>
-                                         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((expIdx) => {
+                      <td className="sticky left-0 z-20 bg-white px-4 py-4 text-center font-bold text-slate-400 border-r border-slate-100">{idx + 1}</td>
+                      <td className="sticky left-[55px] z-20 bg-white px-4 py-4 font-mono font-bold text-slate-700 border-r border-slate-100 whitespace-nowrap">{formatRollNo(st.rollNo)}</td>
+                      <td className="sticky left-[185px] z-20 bg-white px-4 py-4 font-extrabold text-slate-800 border-r border-slate-100">{st.name}</td>
+                      <td className="sticky left-[325px] z-20 bg-white px-4 py-4 font-semibold text-slate-500 border-r border-slate-200">{st.registerNo}</td>
+                      {Array.from({ length: totalExercises }, (_, i) => i + 1).map((expIdx) => {
                         const isSelectedExp = expIdx === sessionsCompleted;
                         const cellState = signoffState[st.id]?.[expIdx] || { observation: 'none', record: 'tick' };
                         const status = notebookMode === 'observation' ? cellState.observation : cellState.record;
@@ -2280,15 +2569,13 @@ export default function FacultyDashboard() {
                             key={expIdx} 
                             onClick={() => {
                               if (notebookMode === 'record') {
-                                if (isSelectedExp) {
-                                  handleToggleSignoff(st.id, expIdx, 'record');
-                                }
+                                handleToggleSignoff(st.id, expIdx, 'record');
                               }
                             }}
                             className={`px-2 py-3.5 text-center border-r border-slate-100 transition-all duration-200 select-none ${
-                              !isSelectedExp
-                                ? 'opacity-30 bg-slate-100/50 cursor-not-allowed pointer-events-none'
-                                : notebookMode === 'record'
+                              !isSelectedExp ? 'opacity-85 ' : ''
+                            }${
+                              notebookMode === 'record'
                                 ? 'cursor-pointer ' + (status === 'tick'
                                   ? 'bg-emerald-50/40 hover:bg-emerald-100/60' 
                                   : status === 'cross'
@@ -2326,24 +2613,18 @@ export default function FacultyDashboard() {
                                         id={`mark-input-${idx}-${expIdx}`}
                                         type="text"
                                         value={displayMark}
-                                        disabled={!isSelectedExp}
-                                        readOnly={!isSelectedExp}
                                         onFocus={(e) => {
-                                          if (!isSelectedExp) return;
                                           setFocusedCell(cellId);
                                           e.target.select();
                                         }}
                                         onChange={(e) => {
-                                          if (!isSelectedExp) return;
                                           handleLocalMarksChange(st.id, expIdx, e.target.value);
                                         }}
                                         onBlur={(e) => {
-                                          if (!isSelectedExp) return;
                                           setFocusedCell(null);
                                           handleSaveMarks(st.id, expIdx, e.target.value);
                                         }}
                                         onKeyDown={(e) => {
-                                          if (!isSelectedExp) return;
                                           if (e.key === 'Enter' || e.key === 'ArrowDown') {
                                             e.preventDefault();
                                             (e.target as HTMLInputElement).blur();
@@ -2352,12 +2633,18 @@ export default function FacultyDashboard() {
                                             e.preventDefault();
                                             (e.target as HTMLInputElement).blur();
                                             focusMarkInput(idx - 1, expIdx);
+                                          } else if (e.key === 'ArrowLeft') {
+                                            e.preventDefault();
+                                            (e.target as HTMLInputElement).blur();
+                                            focusMarkInput(idx, expIdx - 1);
+                                          } else if (e.key === 'ArrowRight') {
+                                            e.preventDefault();
+                                            (e.target as HTMLInputElement).blur();
+                                            focusMarkInput(idx, expIdx + 1);
                                           }
                                         }}
                                         className={`w-14 text-center rounded-lg py-1 font-extrabold text-xs transition-all shadow-xs focus:outline-none placeholder:text-slate-600 placeholder:font-black ${
-                                          !isSelectedExp
-                                            ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
-                                            : isFocused
+                                          isFocused
                                             ? 'bg-white text-slate-900 border-2 border-indigo-600 ring-4 ring-indigo-100 font-black text-sm scale-110 z-20 shadow-lg'
                                             : displayMark === 'A'
                                             ? 'bg-rose-600 text-white border-2 border-rose-700 font-black shadow-sm'
@@ -2373,7 +2660,7 @@ export default function FacultyDashboard() {
                                             ? 'bg-rose-100 text-rose-700 border-2 border-rose-400 font-black'
                                             : (hasObsMark || cellState.observation === 'tick'
                                               ? 'bg-emerald-600 text-white border-2 border-emerald-700 font-black shadow-sm'
-                                              : (isAfterHours
+                                              : (isAfterHours && isSelectedExp
                                                 ? 'bg-amber-50/50 text-amber-900 border border-amber-300 font-bold placeholder:text-amber-600/70'
                                                 : 'bg-white text-slate-800 border border-slate-200 font-bold'))
                                         }`}
@@ -2491,9 +2778,6 @@ export default function FacultyDashboard() {
                   <CalendarDays className="w-5 h-5" />
                 </div>
                 <h2 className="text-lg font-extrabold text-slate-800">Day-by-Day Attendance Reports</h2>
-                <span className="px-3 py-1 bg-indigo-100/80 text-indigo-700 text-[11px] font-black rounded-full border border-indigo-200 uppercase tracking-wide">
-                  Ref: {uniqueReportRef}
-                </span>
               </div>
               <p className="text-xs text-slate-400 mt-1">
                 Inspect daily student attendance records and export unique institutional attendance logs for any selected date.
@@ -3166,65 +3450,7 @@ export default function FacultyDashboard() {
         </div>
       )}
 
-      {/* TODAY'S EXPERIMENT SELECTION MODAL */}
-      {showTodayExpModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-md w-full overflow-hidden transform scale-100 transition-all">
-            <div className="bg-gradient-to-r from-blue-950 to-[#0B192C] text-white p-5 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-indigo-500/30 rounded-xl border border-indigo-400/30">
-                  <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black tracking-tight">Select Today's Experiment Number</h3>
-                  <p className="text-[11px] text-indigo-200 font-semibold">Which Exp No are you evaluating for Section {selectedSection}?</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setShowTodayExpModal(false)}
-                className="text-slate-300 hover:text-white p-1 hover:bg-slate-800/50 rounded-lg transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="p-5 space-y-3">
-              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Select Experiment Number:</p>
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((expNum) => {
-                  const isSelected = sessionsCompleted === expNum;
 
-                  return (
-                    <button
-                      key={expNum}
-                      onClick={() => {
-                        handleUpdateSessionsCompleted(expNum);
-                        setShowTodayExpModal(false);
-                      }}
-                      className={`py-3.5 px-2 rounded-2xl border text-center font-black transition-all cursor-pointer shadow-xs ${
-                        isSelected
-                          ? 'bg-indigo-600 text-white border-indigo-700 ring-4 ring-indigo-100 text-sm shadow-md scale-105'
-                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-300 text-xs'
-                      }`}
-                    >
-                      EXP {expNum}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end shrink-0">
-              <button
-                onClick={() => setShowTodayExpModal(false)}
-                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold rounded-xl cursor-pointer transition shadow-md shadow-indigo-600/20"
-              >
-                Confirm EXP {sessionsCompleted} & Start Evaluation
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* MY SUBJECT TIMETABLE MODAL (FACULTY DASHBOARD) */}
       {showMyTimetableModal && (
@@ -3250,16 +3476,18 @@ export default function FacultyDashboard() {
 
             <div className="p-6 overflow-y-auto">
               {(() => {
-                const savedRaw = localStorage.getItem(`faculty_timetable_${user.id}`) || localStorage.getItem(`faculty_timetable_${user.email}`) || null;
+                const savedRaw = getFacultyTimetableData(user.id, user.email, currentSectionId);
                 let savedImg: string | null = null;
                 let savedPeriod: string | null = null;
                 let savedShortForm: string | null = null;
+                let savedFileName = '';
 
                 if (savedRaw) {
                   try {
                     const parsed = JSON.parse(savedRaw);
-                    if (parsed && typeof parsed === 'object' && parsed.image) {
-                      savedImg = parsed.image;
+                    if (parsed && typeof parsed === 'object') {
+                      savedImg = parsed.fileData || parsed.image || null;
+                      savedFileName = parsed.fileName || '';
                       savedPeriod = parsed.period || null;
                       savedShortForm = parsed.subjectShortForm || null;
                     } else {
@@ -3270,9 +3498,11 @@ export default function FacultyDashboard() {
                   }
                 } else if (facultyData.timetableImage) {
                   savedImg = facultyData.timetableImage;
+                  savedFileName = 'timetable_image';
                 }
 
                 if (savedImg) {
+                  const isBase64Doc = savedImg.startsWith('data:application/') || savedImg.startsWith('data:text/');
                   return (
                     <div className="space-y-4">
                       {/* Banner with Subject Short Form & Period */}
@@ -3293,9 +3523,46 @@ export default function FacultyDashboard() {
                         )}
                       </div>
 
-                      <div className="bg-slate-900 p-3 rounded-2xl border border-slate-800 flex justify-center items-center overflow-hidden max-h-[520px] shadow-lg">
-                        <img src={savedImg} alt="My Subject Timetable Schedule" className="max-h-[500px] w-auto object-contain rounded-xl" />
-                      </div>
+                      {isBase64Doc || savedFileName ? (
+                        <div className="p-5 bg-white border border-slate-200 rounded-2xl flex items-center justify-between gap-3 shadow-xs">
+                          <div className="flex items-center gap-3">
+                            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100">
+                              {(() => {
+                                const ext = savedFileName.split('.').pop()?.toLowerCase();
+                                if (ext === 'pdf') return <FileText className="w-8 h-8 text-rose-500" />;
+                                if (ext === 'xlsx' || ext === 'xls') return <FileSpreadsheet className="w-8 h-8 text-emerald-600" />;
+                                if (ext === 'docx' || ext === 'doc') return <FileCode className="w-8 h-8 text-blue-600" />;
+                                return <File className="w-8 h-8 text-slate-500" />;
+                              })()}
+                            </div>
+                            <div>
+                              <p className="font-extrabold text-slate-800 text-sm truncate max-w-xs">{savedFileName || 'Timetable Document'}</p>
+                              <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
+                                {savedFileName.split('.').pop() || 'DOCUMENT'} File · Linked by HOD
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const link = document.createElement('a');
+                              link.href = savedImg!;
+                              link.download = savedFileName || 'timetable_document';
+                              document.body.appendChild(link);
+                              link.click();
+                              document.body.removeChild(link);
+                            }}
+                            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-sm"
+                          >
+                            <Download className="w-3.5 h-3.5" /> Download Document
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="bg-slate-900 p-3 rounded-2xl border border-slate-800 flex justify-center items-center overflow-hidden max-h-[520px] shadow-lg">
+                          <img src={savedImg} alt="My Subject Timetable Schedule" className="max-h-[500px] w-auto object-contain rounded-xl" />
+                        </div>
+                      )}
+                      
                       <p className="text-xs text-slate-500 text-center font-medium">
                         Assigned by HOD for handling subject: <strong>{subjectName} ({subjectCode})</strong>
                       </p>

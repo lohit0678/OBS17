@@ -34,6 +34,22 @@ const FacultySchema = new Schema(
     facultyAttendance: { type: Number, default: 100 },
     batchId: { type: String, default: "" },
     sectionId: { type: String, default: "" },
+    assignedSectionIds: [{ type: String }],
+    assignedSectionMappings: [
+      {
+        sectionId: { type: String },
+        sectionName: { type: String },
+        subjectName: { type: String },
+        subjectCode: { type: String },
+        labName: { type: String }
+      }
+    ],
+    sections: { type: String, default: "" },
+    labDay: { type: String, default: "" },
+    labPeriod: { type: String, default: "" },
+    labTime: { type: String, default: "" },
+    timetableAnalyzedAt: { type: String, default: "" },
+    timetableAnalyzedDay: { type: String, default: "" },
   },
   {
     timestamps: true,

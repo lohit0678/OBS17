@@ -4,11 +4,11 @@ import { useAuth } from '../context/AuthContext';
 import { useAcademicData } from '../context/AcademicDataContext';
 import * as XLSX from 'xlsx';
 import {
-  LayoutDashboard, Users, BookOpen, Shield, Bell,
+  LayoutDashboard, Users, BookOpen, Shield, Bell, User,
   Plus, Upload, ChevronDown, X, Check, AlertTriangle,
-  GraduationCap, Building2, Calendar, FileSpreadsheet,
+  GraduationCap, Building2, Calendar, CalendarDays, FileSpreadsheet,
   Layers, UserCheck, Trash2, RefreshCw, Eye, BookOpenCheck,
-  ClipboardList, Send, Search, Mail, Pencil, Activity, Clock, CheckCircle, CheckCircle2, Download,
+  ClipboardList, Send, Search, Mail, Pencil, Activity, Clock, CheckCircle, CheckCircle2, XCircle, Download,
   Wifi, WifiOff, TrendingUp, Sparkles
 } from 'lucide-react';
 
@@ -16,14 +16,34 @@ import {
 const DEGREE_OPTIONS  = ['B.Tech', 'M.Tech', 'BCA', 'MCA', 'B.Sc', 'M.Sc'];
 const YEAR_OPTIONS    = ['2021-2025', '2022-2026', '2023-2027', '2024-2028', '2025-2029'];
 const DEPT_OPTIONS    = ['AI & DS', 'CSE', 'ECE', 'EEE', 'Mechanical', 'Civil'];
-const DAYS_OF_WEEK    = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const SEMESTER_OPTIONS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+
+const ROMAN_YEAR_OPTIONS = ['I', 'II', 'III', 'IV'];
+
+const mapSemesterToYear = (sem: string): string => {
+  switch (sem) {
+    case 'I':
+    case 'II':
+      return 'I';
+    case 'III':
+    case 'IV':
+      return 'II';
+    case 'V':
+    case 'VI':
+      return 'III';
+    case 'VII':
+    case 'VIII':
+      return 'IV';
+    default:
+      return 'I';
+  }
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface SubjectItem { id: string; name: string; code: string; shortForm: string; }
 interface Batch  { id: string; name: string; year: string; department: string; isActive: boolean; subjects?: SubjectItem[]; }
 interface Section { id: string; batchId: string; name: string; timetableStructureId: string; timetable?: any[]; }
-interface ParsedTimetableRow { day: string; period: string; subject: string; faculty: string; }
+
 
 // ─── Small shared components ─────────────────────────────────────────────────
 function Badge({ children, color = 'blue' }: { children: React.ReactNode; color?: string }) {
@@ -40,6 +60,47 @@ function Badge({ children, color = 'blue' }: { children: React.ReactNode; color?
       {children}
     </span>
   );
+}
+
+export function getBatchStudents(batch: Batch, sections: Section[], students: any[]): any[] {
+  if (!batch || !students || !Array.isArray(students)) return [];
+  
+  const batchSectionIds = new Set(
+    sections.filter(s => s && s.batchId === batch.id).map(s => s.id)
+  );
+
+  return students.filter(s => {
+    if (!s) return false;
+    
+    // 1. Direct batch ID match
+    if (s.batchId && s.batchId === batch.id) return true;
+
+    // 2. Direct child section ID match
+    if (s.sectionId && batchSectionIds.has(s.sectionId)) return true;
+
+    // If student has a sectionId pointing to a section in another batch, exclude from this batch
+    if (s.sectionId && !batchSectionIds.has(s.sectionId)) {
+      const belongsToOtherBatch = sections.some(sec => sec.id === s.sectionId && sec.batchId !== batch.id);
+      if (belongsToOtherBatch) return false;
+    }
+
+    // 3. Match by academic year (e.g., "2024-2028" vs "2025-2029")
+    if (batch.year && s.batch && s.batch.includes(batch.year)) return true;
+
+    return false;
+  });
+}
+
+export function getLocalDateString(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function formatRollNo(rollNo?: string): string {
+  if (!rollNo) return '-';
+  return String(rollNo).replace(/\s+/g, '').toUpperCase();
 }
 
 export function getSubjectShortForm(subjectName?: string, explicitShortForm?: string, subjectCode?: string): string {
@@ -120,6 +181,84 @@ function SelectField({ label, id, value, onChange, options, required }: {
   );
 }
 
+function ComboboxField({ label, id, value, onChange, options, placeholder = "Select or type...", required }: {
+  label: string; id: string; value: string;
+  onChange: (v: string) => void; options: string[]; placeholder?: string; required?: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredOptions = options.filter(o => o.toLowerCase().includes((value || '').toLowerCase()));
+
+  return (
+    <div className="flex flex-col gap-1.5 relative" ref={containerRef}>
+      <label htmlFor={id} className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+        {label}{required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      <div className="relative">
+        <input
+          id={id}
+          type="text"
+          value={value}
+          onFocus={() => setIsOpen(true)}
+          onChange={e => {
+            onChange(e.target.value);
+            setIsOpen(true);
+          }}
+          placeholder={placeholder}
+          required={required}
+          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800
+            focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition pr-9"
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => setIsOpen(prev => !prev)}
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+        >
+          <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {isOpen && (
+          <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-48 overflow-y-auto py-1">
+            {(filteredOptions.length > 0 ? filteredOptions : options).map(opt => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => {
+                  onChange(opt);
+                  setIsOpen(false);
+                }}
+                className={`w-full px-4 py-2 text-left text-sm font-semibold transition cursor-pointer flex items-center justify-between ${
+                  value === opt ? 'bg-indigo-50 text-indigo-700 font-extrabold' : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span>{opt}</span>
+                {value === opt && <Check className="w-3.5 h-3.5 text-indigo-600" />}
+              </button>
+            ))}
+            {value && !options.includes(value) && (
+              <div className="px-4 py-2 border-t border-slate-100 text-xs font-bold text-indigo-600 bg-indigo-50/50">
+                Custom Entry: &quot;{value}&quot;
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function InputField({ label, id, value, onChange, placeholder, required, type = 'text' }: {
   label: string; id: string; value: string;
   onChange: (v: string) => void; placeholder?: string; required?: boolean; type?: string;
@@ -188,22 +327,24 @@ function StatCard({ icon: Icon, label, value, sub, color }: {
 function OverviewTab({ batches, sections, faculties, students }: {
   batches: Batch[]; sections: Section[]; faculties: any[]; students: any[];
 }) {
-  const activeBatches  = batches.filter(b => b.isActive).length;
-  const totalStudents  = students.length;
-  const activeFaculty  = faculties.filter(f => f.isActive).length;
-  const riskStudents   = students.filter((s: any) => s.riskFlagged).length;
+  const activeBatchIds = new Set(batches.map(b => b.id));
+  const activeSections = sections.filter(s => s.batchId && activeBatchIds.has(s.batchId));
+  
+  const totalStudents = batches.reduce((acc, b) => acc + getBatchStudents(b, sections, students).length, 0);
+  const activeBatches = batches.filter(b => b.isActive).length;
+  const activeFaculty = faculties.filter(f => f.isActive).length;
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard icon={Layers}       label="Active Batches"   value={activeBatches}  sub={`${batches.length} total`}    color="blue"   />
-        <StatCard icon={BookOpenCheck} label="Sections"         value={sections.length} sub="across all batches"          color="purple" />
-        <StatCard icon={GraduationCap} label="Total Students"   value={totalStudents}  sub={`${riskStudents} at risk`}    color="green"  />
+        <StatCard icon={BookOpenCheck} label="Sections"         value={activeSections.length} sub="across active batches" color="purple" />
+        <StatCard icon={GraduationCap} label="Total Students"   value={totalStudents}  sub="enrolled across active batches" color="green"  />
         <StatCard icon={UserCheck}    label="Active Faculty"   value={activeFaculty}  sub={`${faculties.length} pre-approved`} color="amber"  />
       </div>
 
       {/* Quick summary cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4">
         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
           <h3 className="font-extrabold text-slate-800 text-sm mb-4 flex items-center gap-2">
             <Layers className="w-4 h-4 text-indigo-500" />Batch Overview
@@ -214,6 +355,7 @@ function OverviewTab({ batches, sections, faculties, students }: {
             <div className="space-y-2">
               {batches.slice(0, 5).map(b => {
                 const secCount = sections.filter(s => s.batchId === b.id).length;
+                const studCount = getBatchStudents(b, sections, students).length;
                 return (
                   <div key={b.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl">
                     <div>
@@ -222,38 +364,12 @@ function OverviewTab({ batches, sections, faculties, students }: {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge color="purple">{secCount} section{secCount !== 1 ? 's' : ''}</Badge>
+                      <Badge color="blue">{studCount} student{studCount !== 1 ? 's' : ''}</Badge>
                       <Badge color={b.isActive ? 'green' : 'slate'}>{b.isActive ? 'Active' : 'Inactive'}</Badge>
                     </div>
                   </div>
                 );
               })}
-            </div>
-          )}
-        </div>
-
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
-          <h3 className="font-extrabold text-slate-800 text-sm mb-4 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-500" />At-Risk Students
-          </h3>
-          {riskStudents === 0 ? (
-            <div className="flex items-center gap-3 p-4 bg-emerald-50 rounded-2xl">
-              <Check className="w-5 h-5 text-emerald-600" />
-              <p className="text-sm font-bold text-emerald-700">All students are on track!</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {students.filter((s: any) => s.riskFlagged).slice(0, 4).map((s: any) => (
-                <div key={s.id} className="flex items-start justify-between p-3 bg-red-50 rounded-2xl">
-                  <div>
-                    <p className="text-sm font-bold text-slate-800">{s.name}</p>
-                    <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">{s.riskReason}</p>
-                  </div>
-                  <Badge color="red">{s.attendance}% att.</Badge>
-                </div>
-              ))}
-              {riskStudents > 4 && (
-                <p className="text-xs text-slate-500 text-center pt-1">+{riskStudents - 4} more at-risk students</p>
-              )}
             </div>
           )}
         </div>
@@ -273,7 +389,8 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
   const [saving,   setSaving]   = useState(false);
   const [toast,    setToast]    = useState<{ msg: string; type: 'success'|'error' } | null>(null);
   const [sectionSemester, setSectionSemester] = useState('III');
-  const [form, setForm] = useState({ name: '', registerNo: '', rollNo: '', email: '', phone: '', semester: 'III' });
+  const [sectionYear, setSectionYear] = useState('II');
+  const [form, setForm] = useState({ name: '', registerNo: '', rollNo: '', email: '', phone: '', semester: 'III', year: 'II' });
 
   const authFetch = (url: string, opts: RequestInit = {}) =>
     fetch(url, { ...opts, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', ...(opts.headers || {}) } });
@@ -284,9 +401,15 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
       .then(d => {
         const list = d.students || [];
         setStudents(list);
-        if (list.length > 0 && list[0].semester) {
-          setSectionSemester(list[0].semester);
-          setForm(p => ({ ...p, semester: list[0].semester }));
+        if (list.length > 0) {
+          if (list[0].semester) {
+            setSectionSemester(list[0].semester);
+            setForm(p => ({ ...p, semester: list[0].semester }));
+          }
+          if (list[0].year) {
+            setSectionYear(list[0].year);
+            setForm(p => ({ ...p, year: list[0].year }));
+          }
         }
       })
       .catch(() => setStudents([]))
@@ -298,12 +421,12 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
     try {
       const res = await authFetch(`/api/admin/sections/${section.id}/update-semester`, {
         method: 'PUT',
-        body: JSON.stringify({ semester: sectionSemester }),
+        body: JSON.stringify({ semester: sectionSemester, year: sectionYear }),
       });
       const data = await res.json();
       if (res.ok) {
         setStudents(data.students || []);
-        setToast({ msg: `Updated semester to "${sectionSemester}" for all ${students.length} students!`, type: 'success' });
+        setToast({ msg: `Updated semester to "${sectionSemester}" and year to "${sectionYear}" for all ${students.length} students!`, type: 'success' });
       } else {
         setToast({ msg: data.error || 'Failed to update semester', type: 'error' });
       }
@@ -315,17 +438,39 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
   };
 
   const handleSingleStudentSemesterChange = async (studentId: string, newSem: string) => {
+    const newYear = mapSemesterToYear(newSem);
     try {
-      const res = await authFetch(`/api/admin/students/${studentId}/semester`, {
-        method: 'PUT',
-        body: JSON.stringify({ semester: newSem }),
-      });
-      if (res.ok) {
-        setStudents(prev => prev.map(s => s.id === studentId ? { ...s, semester: newSem } : s));
-        setToast({ msg: `Semester updated to ${newSem}`, type: 'success' });
+      const [resSem, resYr] = await Promise.all([
+        authFetch(`/api/admin/students/${studentId}/semester`, {
+          method: 'PUT',
+          body: JSON.stringify({ semester: newSem }),
+        }),
+        authFetch(`/api/admin/students/${studentId}/year`, {
+          method: 'PUT',
+          body: JSON.stringify({ year: newYear }),
+        })
+      ]);
+      if (resSem.ok && resYr.ok) {
+        setStudents(prev => prev.map(s => s.id === studentId ? { ...s, semester: newSem, year: newYear } : s));
+        setToast({ msg: `Semester updated to ${newSem} and Year updated to ${newYear}`, type: 'success' });
       }
     } catch {
-      setToast({ msg: 'Failed to update semester', type: 'error' });
+      setToast({ msg: 'Failed to update semester and year', type: 'error' });
+    }
+  };
+
+  const handleSingleStudentYearChange = async (studentId: string, newYear: string) => {
+    try {
+      const res = await authFetch(`/api/admin/students/${studentId}/year`, {
+        method: 'PUT',
+        body: JSON.stringify({ year: newYear }),
+      });
+      if (res.ok) {
+        setStudents(prev => prev.map(s => s.id === studentId ? { ...s, year: newYear } : s));
+        setToast({ msg: `Year updated to ${newYear}`, type: 'success' });
+      }
+    } catch {
+      setToast({ msg: 'Failed to update year', type: 'error' });
     }
   };
 
@@ -334,12 +479,12 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
     setSaving(true);
     try {
       const res = await authFetch(`/api/admin/sections/${section.id}/students`, {
-        method: 'POST', body: JSON.stringify({ ...form, semester: form.semester || sectionSemester }),
+        method: 'POST', body: JSON.stringify({ ...form, semester: form.semester || sectionSemester, year: form.year || sectionYear }),
       });
       const data = await res.json();
       if (res.ok) {
         setStudents(data.students || []);
-        setForm({ name: '', registerNo: '', rollNo: '', email: '', phone: '', semester: sectionSemester });
+        setForm({ name: '', registerNo: '', rollNo: '', email: '', phone: '', semester: sectionSemester, year: sectionYear });
         setToast({ msg: 'Student added successfully!', type: 'success' });
       } else {
         setToast({ msg: data.error || 'Failed to add student', type: 'error' });
@@ -404,7 +549,7 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
         const regIdx = headerKeys.findIndex((k: string) => k.includes('REGISTER') || k.includes('REG'));
         const rollIdx = headerKeys.findIndex((k: string) => k.includes('ROLL'));
 
-        const parsedStudents: { name: string; registerNo: string; rollNo: string; semester: string }[] = [];
+        const parsedStudents: { name: string; registerNo: string; rollNo: string; semester: string; year: string }[] = [];
 
         for (let r = headerRowIdx + 1; r < matrix.length; r++) {
           const row = matrix[r];
@@ -424,7 +569,7 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
             !upperName.includes('BATCH') &&
             !upperName.includes('NAME')
           ) {
-            parsedStudents.push({ name, registerNo, rollNo, semester: sectionSemester });
+            parsedStudents.push({ name, registerNo, rollNo, semester: sectionSemester, year: sectionYear });
           }
         }
 
@@ -436,13 +581,13 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
 
         const res = await authFetch(`/api/admin/sections/${section.id}/bulk-students`, {
           method: 'POST',
-          body: JSON.stringify({ students: parsedStudents, semester: sectionSemester }),
+          body: JSON.stringify({ students: parsedStudents, semester: sectionSemester, year: sectionYear }),
         });
         const data = await res.json();
         if (res.ok) {
           setStudents(data.students || []);
           setToast({
-            msg: `Bulk Import Complete: Successfully processed ${parsedStudents.length} students into Semester ${sectionSemester} (Added ${data.addedCount || 0}, Updated ${data.updatedCount || 0})!`,
+            msg: `Bulk Import Complete: Successfully processed ${parsedStudents.length} students into Semester ${sectionSemester} and Year ${sectionYear} (Added ${data.addedCount || 0}, Updated ${data.updatedCount || 0})!`,
             type: 'success'
           });
         } else {
@@ -471,10 +616,10 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
           </div>
           <div>
             <h4 className="text-xs font-extrabold text-indigo-900 uppercase tracking-wider">
-              Section Semester Setting
+              Section Semester & Year Setting
             </h4>
             <p className="text-[11px] text-indigo-700 font-medium">
-              Set or update the semester for all enrolled students in this section.
+              Set or update the semester and academic year for all enrolled students in this section.
             </p>
           </div>
         </div>
@@ -482,13 +627,28 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
           <select
             value={sectionSemester}
             onChange={e => {
-              setSectionSemester(e.target.value);
-              setForm(p => ({ ...p, semester: e.target.value }));
+              const sem = e.target.value;
+              setSectionSemester(sem);
+              const yr = mapSemesterToYear(sem);
+              setSectionYear(yr);
+              setForm(p => ({ ...p, semester: sem, year: yr }));
             }}
             className="px-3.5 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-extrabold text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-xs"
           >
             {SEMESTER_OPTIONS.map(sem => (
               <option key={sem} value={sem}>Semester {sem}</option>
+            ))}
+          </select>
+          <select
+            value={sectionYear}
+            onChange={e => {
+              setSectionYear(e.target.value);
+              setForm(p => ({ ...p, year: e.target.value }));
+            }}
+            className="px-3.5 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-extrabold text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-xs"
+          >
+            {ROMAN_YEAR_OPTIONS.map(yr => (
+              <option key={yr} value={yr}>Year {yr}</option>
             ))}
           </select>
           <button
@@ -538,6 +698,7 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
           <InputField label="Email" id="s-email" type="email" value={form.email} onChange={v => setForm(p => ({ ...p, email: v }))} placeholder="auto-generated if blank" />
           <InputField label="Phone" id="s-phone" value={form.phone} onChange={v => setForm(p => ({ ...p, phone: v }))} placeholder="+91 …" />
           <SelectField label="Semester" id="s-sem" value={form.semester} onChange={v => setForm(p => ({ ...p, semester: v }))} options={SEMESTER_OPTIONS} />
+          <SelectField label="Year" id="s-year" value={form.year} onChange={v => setForm(p => ({ ...p, year: v }))} options={ROMAN_YEAR_OPTIONS} />
           <div className="sm:col-span-2 flex justify-end pt-1">
             <button
               type="submit" disabled={saving}
@@ -568,6 +729,7 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
                   <th className="text-left py-2 px-3 text-slate-500 font-bold">Reg. No.</th>
                   <th className="text-left py-2 px-3 text-slate-500 font-bold">Roll</th>
                   <th className="text-left py-2 px-3 text-slate-500 font-bold">Semester</th>
+                  <th className="text-left py-2 px-3 text-slate-500 font-bold">Year</th>
                 </tr>
               </thead>
               <tbody>
@@ -577,15 +739,14 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
                     <td className="py-2.5 px-3 text-slate-600">{s.registerNo}</td>
                     <td className="py-2.5 px-3 text-slate-600">{s.rollNo}</td>
                     <td className="py-2.5 px-3">
-                      <select
-                        value={s.semester || sectionSemester}
-                        onChange={e => handleSingleStudentSemesterChange(s.id, e.target.value)}
-                        className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-bold rounded-lg border border-indigo-200/60 focus:outline-none cursor-pointer"
-                      >
-                        {SEMESTER_OPTIONS.map(sem => (
-                          <option key={sem} value={sem}>Sem {sem}</option>
-                        ))}
-                      </select>
+                      <span className="inline-block px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-100">
+                        Sem {s.semester || sectionSemester}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span className="inline-block px-2.5 py-1 bg-amber-50 text-amber-700 text-xs font-bold rounded-lg border border-amber-100">
+                        Year {s.year || sectionYear}
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -642,7 +803,7 @@ function EditBatchModal({ batch, token, onClose, onSave }: {
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
       <form onSubmit={handleSave} className="space-y-4">
         <SelectField label="Degree Programme" id="eb-name" value={form.name} onChange={v => setForm(p => ({ ...p, name: v }))} options={DEGREE_OPTIONS} required />
-        <SelectField label="Academic Year" id="eb-year" value={form.year} onChange={v => setForm(p => ({ ...p, year: v }))} options={YEAR_OPTIONS} required />
+        <ComboboxField label="Academic Year" id="eb-year" value={form.year} onChange={v => setForm(p => ({ ...p, year: v }))} options={YEAR_OPTIONS} placeholder="Select or type year (e.g. 2026-2030)" required />
         <SelectField label="Department" id="eb-dept" value={form.department} onChange={v => setForm(p => ({ ...p, department: v }))} options={DEPT_OPTIONS} required />
         <div className="flex items-center gap-2 pt-1">
           <input
@@ -841,10 +1002,10 @@ function BatchesTab({ batches, sections, faculties = [], setBatches, setSections
     finally { setSaving(false); }
   };
 
-  const { refreshData, setStudents, setFaculties } = useAcademicData();
+  const { refreshData, students = [], setStudents, setFaculties } = useAcademicData();
 
   const handleDeleteBatch = async (batchId: string, batchName: string) => {
-    if (!confirm(`Are you sure you want to delete "${batchName}" and all its associated sections and student records?`)) return;
+    if (!confirm(`Are you sure you want to remove batch "${batchName}"?`)) return;
     try {
       const res = await authFetch(`/api/admin/batches/${batchId}`, { method: 'DELETE' });
       const data = await res.json();
@@ -853,10 +1014,10 @@ function BatchesTab({ batches, sections, faculties = [], setBatches, setSections
         if (data.sections) setSections(data.sections);
         if (data.students) setStudents(data.students);
         if (data.faculties) setFaculties(data.faculties);
-        setToast({ msg: `Batch "${batchName}" and all linked student/section records deleted from database!`, type: 'success' });
+        setToast({ msg: `Batch "${batchName}" removed. All student and section records preserved.`, type: 'success' });
         if (onReload) onReload();
       } else {
-        setToast({ msg: data.error || 'Delete failed', type: 'error' });
+        setToast({ msg: data.error || 'Remove failed', type: 'error' });
       }
     } catch { setToast({ msg: 'Network error', type: 'error' }); }
   };
@@ -923,7 +1084,7 @@ function BatchesTab({ batches, sections, faculties = [], setBatches, setSections
           </h3>
           <form onSubmit={handleCreateBatch} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <SelectField label="Degree Programme" id="b-name" value={batchForm.name} onChange={v => setBatchForm(p => ({ ...p, name: v }))} options={DEGREE_OPTIONS} required />
-            <SelectField label="Academic Year"     id="b-year" value={batchForm.year} onChange={v => setBatchForm(p => ({ ...p, year: v }))} options={YEAR_OPTIONS}   required />
+            <ComboboxField label="Academic Year"     id="b-year" value={batchForm.year} onChange={v => setBatchForm(p => ({ ...p, year: v }))} options={YEAR_OPTIONS} placeholder="Select or type year (e.g. 2026-2030)"   required />
             <SelectField label="Department"        id="b-dept" value={batchForm.department} onChange={v => setBatchForm(p => ({ ...p, department: v }))} options={DEPT_OPTIONS} required />
             <div className="sm:col-span-3 flex justify-end gap-3 pt-2">
               <button type="button" onClick={() => setShowBatchForm(false)}
@@ -949,7 +1110,8 @@ function BatchesTab({ batches, sections, faculties = [], setBatches, setSections
       ) : (
         <div className="space-y-4">
           {batches.map(batch => {
-            const batchSections = sections.filter(s => s.batchId === batch.id);
+            const batchSections = sections.filter(s => s.batchId === batch.id).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+            const batchStudents = getBatchStudents(batch, sections, students);
             return (
               <div key={batch.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
                 {/* Batch header */}
@@ -965,7 +1127,9 @@ function BatchesTab({ batches, sections, faculties = [], setBatches, setSections
                       <div className="flex items-center gap-2 mt-0.5">
                         <Badge color="blue">{batch.year}</Badge>
                         <Badge color={batch.isActive ? 'green' : 'slate'}>{batch.isActive ? 'Active' : 'Inactive'}</Badge>
-                        <span className="text-[10px] text-slate-400">{batchSections.length} section{batchSections.length !== 1 ? 's' : ''}</span>
+                        <span className="text-[10px] text-slate-400 font-bold">
+                          {batchSections.length} section{batchSections.length !== 1 ? 's' : ''} · {batchStudents.length} student{batchStudents.length !== 1 ? 's' : ''}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -1184,251 +1348,38 @@ function BatchesTab({ batches, sections, faculties = [], setBatches, setSections
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  TAB 3 — TIMETABLE BUILDER
-// ═══════════════════════════════════════════════════════════════════════════════
-function TimetableBuilderTab({ sections, batches, token }: {
-  sections: Section[]; batches: Batch[]; token: string;
-}) {
-  const [selectedSectionId, setSelectedSectionId] = useState('');
-  const [parsedRows,  setParsedRows]  = useState<ParsedTimetableRow[]>([]);
-  const [parseCount,  setParseCount]  = useState<number | null>(null);
-  const [grid, setGrid] = useState<Record<string, Record<string, { subject: string; faculty: string }>>>({});
-  const [periods] = useState(['Period 1', 'Period 2', 'Period 3', 'Period 4', 'Period 5', 'Period 6']);
-  const [saving,  setSaving]  = useState(false);
-  const [toast,   setToast]   = useState<{ msg: string; type: 'success'|'error' } | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const authFetch = (url: string, opts: RequestInit = {}) =>
-    fetch(url, { ...opts, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', ...(opts.headers || {}) } });
-
-  // Initialize empty grid
-  useEffect(() => {
-    const g: typeof grid = {};
-    DAYS_OF_WEEK.forEach(day => {
-      g[day] = {};
-      periods.forEach(p => { g[day][p] = { subject: '', faculty: '' }; });
-    });
-    setGrid(g);
-  }, []);
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = evt => {
-      try {
-        const wb  = XLSX.read(evt.target?.result, { type: 'binary' });
-        const ws  = wb.Sheets[wb.SheetNames[0]];
-        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' });
-
-        const colAliases: Record<string, string[]> = {
-          day:     ['Day', 'day', 'DAY'],
-          period:  ['Period', 'Period Name', 'period', 'PeriodName'],
-          subject: ['Subject', 'Subject Code', 'SubjectCode', 'subject'],
-          faculty: ['Faculty', 'Faculty Name', 'FacultyName', 'faculty'],
-        };
-
-        function pick(row: any, keys: string[]): string {
-          for (const k of keys) if (row[k] !== undefined && row[k] !== '') return String(row[k]).trim();
-          return '';
-        }
-
-        const parsed: ParsedTimetableRow[] = rows.map(row => ({
-          day:     pick(row, colAliases.day),
-          period:  pick(row, colAliases.period),
-          subject: pick(row, colAliases.subject),
-          faculty: pick(row, colAliases.faculty),
-        })).filter(r => r.day && r.period);
-
-        setParsedRows(parsed);
-        setParseCount(parsed.length);
-
-        // Auto-fill grid
-        const newGrid = { ...grid };
-        parsed.forEach(({ day, period, subject, faculty }) => {
-          const normDay = DAYS_OF_WEEK.find(d => d.toLowerCase() === day.toLowerCase());
-          const normPeriod = periods.find(p => p.toLowerCase().includes(period.toLowerCase()) || period.toLowerCase().includes(p.toLowerCase().replace('period ', '')));
-          if (normDay && normPeriod) {
-            if (!newGrid[normDay]) newGrid[normDay] = {};
-            newGrid[normDay][normPeriod] = { subject, faculty };
-          }
-        });
-        setGrid(newGrid);
-        setToast({ msg: `Parsed ${parsed.length} rows — grid auto-populated!`, type: 'success' });
-      } catch {
-        setToast({ msg: 'Failed to parse Excel file', type: 'error' });
-      }
-    };
-    reader.readAsBinaryString(file);
-    if (fileRef.current) fileRef.current.value = '';
-  };
-
-  const handleSave = async () => {
-    if (!selectedSectionId) { setToast({ msg: 'Select a section first', type: 'error' }); return; }
-    setSaving(true);
-    // Convert grid to timetable entries
-    const timetable: any[] = [];
-    Object.entries(grid).forEach(([day, dayData]) => {
-      Object.entries(dayData).forEach(([periodId, cell]) => {
-        if (cell.subject) {
-          timetable.push({ day, periodId, subjectId: cell.subject, facultyId: cell.faculty, room: '' });
-        }
-      });
-    });
-    try {
-      const res = await authFetch(`/api/admin/sections/${selectedSectionId}/timetable`, {
-        method: 'POST', body: JSON.stringify({ timetable }),
-      });
-      if (res.ok) {
-        setToast({ msg: 'Timetable saved successfully!', type: 'success' });
-      } else {
-        const d = await res.json();
-        setToast({ msg: d.error || 'Save failed', type: 'error' });
-      }
-    } catch { setToast({ msg: 'Network error', type: 'error' }); }
-    finally { setSaving(false); }
-  };
-
-  const selectedSection = sections.find(s => s.id === selectedSectionId);
-  const selectedBatch   = selectedSection ? batches.find(b => b.id === selectedSection.batchId) : undefined;
-
-  return (
-    <div className="space-y-6">
-      {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
-
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-extrabold text-slate-800">Timetable Builder</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Upload an Excel sheet or fill the grid manually to set up timetables.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {parseCount !== null && (
-            <span className="px-3 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-xl flex items-center gap-1.5">
-              <FileSpreadsheet className="w-3.5 h-3.5" /> {parseCount} rows parsed
-            </span>
-          )}
-          <label className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer transition shadow-sm">
-            <Upload className="w-3.5 h-3.5" /> Upload Timetable Excel
-            <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileUpload} />
-          </label>
-        </div>
-      </div>
-
-      {/* Excel format hint */}
-      <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 text-xs text-blue-800 font-medium">
-        <strong>Expected Excel columns:</strong> <code className="bg-blue-100 px-1.5 py-0.5 rounded">Day</code> ·
-        <code className="bg-blue-100 px-1.5 py-0.5 rounded ml-1">Period</code> ·
-        <code className="bg-blue-100 px-1.5 py-0.5 rounded ml-1">Subject</code> ·
-        <code className="bg-blue-100 px-1.5 py-0.5 rounded ml-1">Faculty</code> — aliases like
-        "Period Name", "Subject Code", "Faculty Name" are also accepted.
-      </div>
-
-      {/* Section selector */}
-      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Select Section</label>
-            <select
-              value={selectedSectionId} onChange={e => setSelectedSectionId(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition cursor-pointer"
-            >
-              <option value="">— Choose a section —</option>
-              {sections.map(s => {
-                const b = batches.find(b => b.id === s.batchId);
-                return <option key={s.id} value={s.id}>{b ? `${b.name} — ` : ''}{s.name}</option>;
-              })}
-            </select>
-          </div>
-          {selectedBatch && (
-            <div className="flex items-end">
-              <div className="px-4 py-2.5 bg-slate-50 rounded-xl text-xs font-semibold text-slate-600 border border-slate-200">
-                {selectedBatch.name} · {selectedBatch.department} · {selectedBatch.year}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Timetable Grid */}
-      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
-            <ClipboardList className="w-4 h-4 text-indigo-500" /> Weekly Timetable Grid
-          </h3>
-          {selectedSectionId && (
-            <button
-              onClick={handleSave} disabled={saving}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer transition disabled:opacity-60"
-            >
-              {saving ? <Spinner /> : <Check className="w-3.5 h-3.5" />} Save Timetable
-            </button>
-          )}
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="text-left px-4 py-3 font-bold text-slate-600 w-28 border-b border-slate-100">Day</th>
-                {periods.map(p => (
-                  <th key={p} className="text-center px-3 py-3 font-bold text-slate-600 border-b border-slate-100 min-w-[140px]">{p}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {DAYS_OF_WEEK.map((day, di) => (
-                <tr key={day} className={di % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}>
-                  <td className="px-4 py-3 font-extrabold text-slate-700 border-b border-slate-50">{day}</td>
-                  {periods.map(period => {
-                    const cell = grid[day]?.[period] || { subject: '', faculty: '' };
-                    return (
-                      <td key={period} className="px-2 py-2 border-b border-slate-50">
-                        <div className="flex flex-col gap-1">
-                          <input
-                            type="text" placeholder="Subject" value={cell.subject}
-                            onChange={e => setGrid(prev => ({
-                              ...prev,
-                              [day]: { ...prev[day], [period]: { ...cell, subject: e.target.value } }
-                            }))}
-                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-400 transition"
-                          />
-                          <input
-                            type="text" placeholder="Faculty" value={cell.faculty}
-                            onChange={e => setGrid(prev => ({
-                              ...prev,
-                              [day]: { ...prev[day], [period]: { ...cell, faculty: e.target.value } }
-                            }))}
-                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-medium text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-400 transition"
-                          />
-                        </div>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
 //  TAB 4 — FACULTY ACCESS
 // ═══════════════════════════════════════════════════════════════════════════════
 function AssignSectionModal({ faculty, batches, sections, token, onClose, onSave }: {
   faculty: any; batches: Batch[]; sections: Section[];
   token: string; onClose: () => void; onSave: (facultyId: string, batchId: string, sectionId: string) => void;
 }) {
-  const [batchId, setBatchId] = useState(faculty.batchId || '');
-  const [sectionId, setSectionId] = useState(faculty.sectionId || '');
-  const [subjectName, setSubjectName] = useState(faculty.subjectName || faculty.subjectsHandled?.[0] || '');
-  const [subjectCode, setSubjectCode] = useState(faculty.subjectCode || '');
-  const [labName, setLabName] = useState(faculty.labName || '');
+  const [mappings, setMappings] = useState<any[]>(() => {
+    if (Array.isArray(faculty.assignedSectionMappings) && faculty.assignedSectionMappings.length > 0) {
+      return faculty.assignedSectionMappings;
+    }
+    if (faculty.sectionId) {
+      const sec = sections.find(s => s.id === faculty.sectionId);
+      return [{
+        sectionId: faculty.sectionId,
+        sectionName: sec ? sec.name : faculty.section || 'A',
+        subjectName: faculty.subjectName || faculty.subject || '',
+        subjectCode: faculty.subjectCode || '',
+        labName: faculty.labName || ''
+      }];
+    }
+    return [];
+  });
+
+  const [selectedBatchId, setSelectedBatchId] = useState('');
+  const [selectedSectionId, setSelectedSectionId] = useState('');
+  const [subjectName, setSubjectName] = useState('');
+  const [subjectCode, setSubjectCode] = useState('');
+  const [labName, setLabName] = useState('');
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success'|'error' } | null>(null);
 
-  const batchSections = sections.filter(s => s.batchId === batchId);
+  const batchSections = sections.filter(s => s.batchId === selectedBatchId);
 
   const authFetch = (url: string, opts: RequestInit = {}) =>
     fetch(url, { ...opts, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', ...(opts.headers || {}) } });
@@ -1438,12 +1389,12 @@ function AssignSectionModal({ faculty, batches, sections, token, onClose, onSave
     try {
       const targetId = faculty.id || faculty._id || faculty.email;
       const res = await authFetch(`/api/admin/faculty/${targetId}/assign-section`, {
-        method: 'PUT', body: JSON.stringify({ batchId, sectionId, subjectName, subjectCode, labName }),
+        method: 'PUT', body: JSON.stringify({ sectionMappings: mappings }),
       });
       const data = await res.json();
       if (res.ok) {
-        onSave(targetId, batchId, sectionId);
-        setToast({ msg: 'Faculty details & section assignment saved!', type: 'success' });
+        onSave(targetId, '', '');
+        setToast({ msg: 'Faculty details & section assignments saved!', type: 'success' });
         setTimeout(onClose, 1200);
       } else {
         setToast({ msg: data.error || 'Failed', type: 'error' });
@@ -1467,37 +1418,117 @@ function AssignSectionModal({ faculty, batches, sections, token, onClose, onSave
           </div>
         </div>
 
-        <InputField label="Subject Name" id="assign-subj-name" value={subjectName} onChange={v => setSubjectName(v)} placeholder="e.g. Artificial Intelligence" />
-        <InputField label="Subject Code" id="assign-subj-code" value={subjectCode} onChange={v => setSubjectCode(v)} placeholder="e.g. CS3501" />
-        <InputField label="Lab Name" id="assign-lab-name" value={labName} onChange={v => setLabName(v)} placeholder="e.g. AI & Data Analytics Lab" />
+        {/* Current Mappings List */}
+        {mappings.length > 0 && (
+          <div className="space-y-2 border border-slate-200 rounded-2xl p-3.5 bg-slate-50/50">
+            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Current Assignments ({mappings.length})</h4>
+            <div className="max-h-[160px] overflow-y-auto space-y-2 pr-1">
+              {mappings.map((m, idx) => {
+                const sec = sections.find(s => s.id === m.sectionId);
+                const bat = sec ? batches.find(b => b.id === sec.batchId) : null;
+                const batchLabel = bat ? `${bat.name} (${bat.year})` : (m.batchName ? `${m.batchName} (${m.batchYear})` : 'General Batch');
+                return (
+                  <div key={idx} className="flex items-center justify-between gap-3 bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-extrabold text-slate-800 truncate">
+                        {batchLabel} · Sec {m.sectionName || sec?.name || 'A'}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium truncate mt-0.5">
+                        {m.subjectName || 'General Lab'} {m.subjectCode ? `(${m.subjectCode})` : ''} {m.labName ? `· ${m.labName}` : ''}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMappings(mappings.filter((_, i) => i !== idx));
+                      }}
+                      className="p-1 hover:bg-rose-50 text-rose-500 hover:text-rose-600 rounded-lg transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Batch</label>
-          <select
-            value={batchId} onChange={e => { setBatchId(e.target.value); setSectionId(''); }}
-            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition cursor-pointer"
-          >
-            <option value="">— Select Batch —</option>
-            {batches.map(b => (
-              <option key={b.id} value={b.id}>{b.name} — {b.department} ({b.year})</option>
-            ))}
-          </select>
-        </div>
+        {/* Add Assignment Section */}
+        <div className="p-4 border border-indigo-100 rounded-2xl bg-indigo-50/20 space-y-3">
+          <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-wider">Add Section Assignment Mapping</h4>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">Batch</label>
+              <select
+                value={selectedBatchId}
+                onChange={e => { setSelectedBatchId(e.target.value); setSelectedSectionId(''); }}
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
+              >
+                <option value="">— Select Batch —</option>
+                {batches.map(b => (
+                  <option key={b.id} value={b.id}>{b.name} ({b.year})</option>
+                ))}
+              </select>
+            </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Section</label>
-          <select
-            value={sectionId} onChange={e => setSectionId(e.target.value)} disabled={!batchId}
-            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition cursor-pointer disabled:opacity-50"
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">Section</label>
+              <select
+                value={selectedSectionId}
+                onChange={e => setSelectedSectionId(e.target.value)}
+                disabled={!selectedBatchId}
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer disabled:opacity-50"
+              >
+                <option value="">— Select Section —</option>
+                {batchSections.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <InputField label="Subject Name" id="assign-subj-name" value={subjectName} onChange={v => setSubjectName(v)} placeholder="e.g. AI" />
+            <InputField label="Subject Code" id="assign-subj-code" value={subjectCode} onChange={v => setSubjectCode(v)} placeholder="e.g. CS3501" />
+            <InputField label="Lab Name" id="assign-lab-name" value={labName} onChange={v => setLabName(v)} placeholder="e.g. AI Lab" />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (!selectedBatchId || !selectedSectionId) {
+                alert("Please select a Batch and Section first!");
+                return;
+              }
+              const sec = sections.find(s => s.id === selectedSectionId);
+              const bat = batches.find(b => b.id === selectedBatchId);
+              
+              if (mappings.some(m => m.sectionId === selectedSectionId)) {
+                alert("This section is already assigned!");
+                return;
+              }
+
+              const newMapping = {
+                sectionId: selectedSectionId,
+                sectionName: sec ? sec.name : 'A',
+                batchName: bat ? bat.name : '',
+                batchYear: bat ? bat.year : '',
+                subjectName,
+                subjectCode,
+                labName
+              };
+
+              setMappings([...mappings, newMapping]);
+              setSelectedSectionId('');
+              setSubjectName('');
+              setSubjectCode('');
+              setLabName('');
+            }}
+            className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
           >
-            <option value="">— Select Section —</option>
-            {batchSections.map(s => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
-          {batchId && batchSections.length === 0 && (
-            <p className="text-[11px] text-amber-600 font-semibold">No sections exist for this batch yet.</p>
-          )}
+            + Add Assignment Mapping
+          </button>
         </div>
 
         <div className="flex justify-end gap-3 pt-2">
@@ -1505,7 +1536,7 @@ function AssignSectionModal({ faculty, batches, sections, token, onClose, onSave
             className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-xl cursor-pointer transition">
             Cancel
           </button>
-          <button onClick={handleAssign} disabled={saving || !batchId}
+          <button onClick={handleAssign} disabled={saving}
             className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer transition disabled:opacity-60">
             {saving ? <Spinner /> : <Check className="w-3.5 h-3.5" />} Save Faculty Details
           </button>
@@ -1598,7 +1629,14 @@ function FacultyAssignedStudentsModal({ faculty, section, batch, token, onClose 
   );
 }
 
-export function exportFacultyObservationMarksExcel(faculty: any, students: any[]) {
+export function exportFacultyObservationMarksExcel(
+  faculty: any,
+  students: any[],
+  targetBatchId?: string,
+  targetSectionId?: string,
+  sections: any[] = [],
+  batches: any[] = []
+) {
   const facEmail = String(faculty.email || '').toLowerCase();
   const facId = String(faculty.id || faculty._id || '').toLowerCase();
   const facSubjCode = String(faculty.subjectCode || '').toLowerCase();
@@ -1612,6 +1650,18 @@ export function exportFacultyObservationMarksExcel(faculty: any, students: any[]
 
   // 1. Get all students that belong to this faculty's assigned section or account
   let facStudents = students.filter((s: any) => {
+    // Strictly filter by batch/section first if target filters are provided
+    if (targetBatchId) {
+      const bat = batches.find(b => b.id === targetBatchId);
+      const isBatchMatch = s.batchId === targetBatchId || (bat && (s.batch === bat.year || s.batch === bat.name));
+      if (!isBatchMatch) return false;
+    }
+    if (targetSectionId) {
+      const sec = sections.find(sec => sec.id === targetSectionId);
+      const isSectionMatch = s.sectionId === targetSectionId || (sec && s.section?.toLowerCase() === sec.name?.toLowerCase());
+      if (!isSectionMatch) return false;
+    }
+
     const sFacId = String(s.facultyId || '').toLowerCase();
     const sFacEmail = String(s.facultyEmail || '').toLowerCase();
     if (facId && (sFacId === facId || sFacEmail === facId)) return true;
@@ -1633,8 +1683,16 @@ export function exportFacultyObservationMarksExcel(faculty: any, students: any[]
     return hasExp;
   });
 
-  // Fallback: If facStudents is empty, select students matching faculty's department or batch
-  if (facStudents.length === 0) {
+  // Fallback: If facStudents is empty and target filters were selected, search all students in that batch/section
+  if (facStudents.length === 0 && targetBatchId && targetSectionId) {
+    const sec = sections.find(sec => sec.id === targetSectionId);
+    const bat = batches.find(b => b.id === targetBatchId);
+    facStudents = students.filter((s: any) => {
+      const isBatchMatch = s.batchId === targetBatchId || (bat && (s.batch === bat.year || s.batch === bat.name));
+      const isSectionMatch = s.sectionId === targetSectionId || (sec && s.section?.toLowerCase() === sec.name?.toLowerCase());
+      return isBatchMatch && isSectionMatch;
+    });
+  } else if (facStudents.length === 0) {
     const facDept = String(faculty.department || '').toLowerCase();
     facStudents = students.filter((s: any) => {
       if (facDept && String(s.department || '').toLowerCase() === facDept) return true;
@@ -1721,15 +1779,29 @@ export function exportFacultyObservationMarksExcel(faculty: any, students: any[]
   XLSX.utils.book_append_sheet(wb, ws, "Observation Marks Matrix");
   const cleanFacName = (faculty.name || 'Faculty').replace(/[^a-zA-Z0-9]/g, '_');
   const cleanSubjCode = (faculty.subjectCode || 'SUBJ').replace(/[^a-zA-Z0-9]/g, '_');
-  XLSX.writeFile(wb, `Observation_Marks_${cleanFacName}_${cleanSubjCode}.xlsx`);
+
+  const batObj = targetBatchId ? batches.find(b => b.id === targetBatchId) : null;
+  const secObj = targetSectionId ? sections.find(s => s.id === targetSectionId) : null;
+  const batchStr = batObj ? `${batObj.name}_${batObj.year}`.replace(/[^a-zA-Z0-9]/g, '_') : '';
+  const sectionStr = secObj ? `Sec_${secObj.name}`.replace(/[^a-zA-Z0-9]/g, '_') : '';
+  const batchSectionSuffix = [batchStr, sectionStr].filter(Boolean).join('_');
+
+  const fileName = `Observation_Marks_${cleanFacName}_${cleanSubjCode}${batchSectionSuffix ? `_${batchSectionSuffix}` : ''}.xlsx`;
+  XLSX.writeFile(wb, fileName);
 }
 
-function FacultyMonitoringModal({ faculty, token, onClose }: {
-  faculty: any; token: string; onClose: () => void;
+function FacultyMonitoringModal({ faculty, token, batches, sections, onClose }: {
+  faculty: any; token: string; batches: Batch[]; sections: Section[]; onClose: () => void;
 }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewTab, setViewTab] = useState<'dayreport' | 'evaluations'>('evaluations');
+  const [reportDate, setReportDate] = useState<string>(() => getLocalDateString());
+  const [modalBatchFilter, setModalBatchFilter] = useState('');
+  const [modalSectionFilter, setModalSectionFilter] = useState('');
+  const [activeCategory, setActiveCategory] = useState<'all' | 'top' | 'poor' | 'late'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     const targetId = faculty.id || faculty._id || faculty.email;
@@ -1745,86 +1817,262 @@ function FacultyMonitoringModal({ faculty, token, onClose }: {
       .finally(() => setLoading(false));
   }, [faculty, token]);
 
+  // Find batches assigned to this faculty member
+  const facultyBatches = (() => {
+    const batchIds = new Set<string>();
+    const mappings = faculty.assignedSectionMappings || [];
+    mappings.forEach((m: any) => {
+      const sec = sections.find(s => s.id === m.sectionId);
+      if (sec && sec.batchId) batchIds.add(sec.batchId);
+    });
+    const sIds = faculty.assignedSectionIds || (faculty.sectionId ? [faculty.sectionId] : []);
+    sIds.forEach((sid: string) => {
+      const sec = sections.find(s => s.id === sid);
+      if (sec && sec.batchId) batchIds.add(sec.batchId);
+    });
+    if (faculty.batchId) batchIds.add(faculty.batchId);
+    
+    if (batchIds.size === 0) return batches;
+    return batches.filter(b => batchIds.has(b.id));
+  })();
+
+  // Find sections assigned to this faculty member for the selected batch
+  const facultySections = (() => {
+    const mappings = faculty.assignedSectionMappings || [];
+    const assignedSectionIds = new Set<string>(mappings.map((m: any) => m.sectionId));
+    const sIds = faculty.assignedSectionIds || (faculty.sectionId ? [faculty.sectionId] : []);
+    sIds.forEach((sid: string) => assignedSectionIds.add(sid));
+    
+    let filtered = sections;
+    if (assignedSectionIds.size > 0) {
+      filtered = sections.filter(s => assignedSectionIds.has(s.id));
+    }
+    
+    if (modalBatchFilter) {
+      filtered = filtered.filter(s => s.batchId === modalBatchFilter);
+    }
+    return filtered;
+  })();
+
+  // Helpers for performance grading
+  const isTopPerformer = (log: any) => {
+    const scoreStr = String(log.score || '').trim().toUpperCase();
+    if (scoreStr === 'A' || scoreStr === 'ABSENT' || scoreStr.startsWith('A/')) return false;
+    if (scoreStr.startsWith('F/') || scoreStr === 'F' || scoreStr === 'X' || scoreStr === 'CROSS') return false;
+    const num = parseFloat(scoreStr.replace(/[^0-9.]/g, ''));
+    if (!isNaN(num) && num >= 8) return true;
+    return false;
+  };
+
+  const isPoorPerformer = (log: any) => {
+    const scoreStr = String(log.score || '').trim().toUpperCase();
+    if (scoreStr === 'A' || scoreStr === 'ABSENT' || scoreStr.startsWith('A/')) return true;
+    if (scoreStr.startsWith('F/') || scoreStr === 'F' || scoreStr === 'X' || scoreStr === 'CROSS') return true;
+    const num = parseFloat(scoreStr.replace(/[^0-9.]/g, ''));
+    if (!isNaN(num) && num < 6) return true;
+    return false;
+  };
+
+  const getPerformanceBadge = (log: any) => {
+    const scoreStr = String(log.score || '').trim().toUpperCase();
+    if (scoreStr === 'A' || scoreStr === 'ABSENT' || scoreStr.startsWith('A/')) {
+      return <span className="px-2.5 py-1 bg-rose-100 text-rose-800 border border-rose-200 rounded-full text-[10px] font-black uppercase">❌ Absent</span>;
+    }
+    if (scoreStr.startsWith('F/') || scoreStr === 'F' || scoreStr === 'X' || scoreStr === 'CROSS') {
+      return <span className="px-2.5 py-1 bg-rose-100 text-rose-800 border border-rose-200 rounded-full text-[10px] font-black uppercase">❌ Fail / Unsigned</span>;
+    }
+    const num = parseFloat(scoreStr.replace(/[^0-9.]/g, ''));
+    if (!isNaN(num)) {
+      if (num >= 8) {
+        return <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full text-[10px] font-black uppercase inline-flex items-center gap-1">🌟 Well Performed</span>;
+      }
+      if (num >= 6) {
+        return <span className="px-2 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded-full text-[10px] font-black uppercase inline-flex items-center gap-1">🆗 Satisfactory</span>;
+      }
+      return <span className="px-2 py-0.5 bg-amber-100 text-amber-800 border border-amber-300 rounded-full text-[10px] font-black uppercase inline-flex items-center gap-1">⚠️ Poor / Needs Imp.</span>;
+    }
+    return <span className="px-2.5 py-1 bg-slate-100 text-slate-700 border border-slate-200 rounded-full text-[10px] font-extrabold">{log.score || 'Evaluated'}</span>;
+  };
+
+  const allAssignedStudents = data?.assignedStudents || [];
+
+  // Filter assigned students by batch, section, search
+  const filteredAssignedStudents = allAssignedStudents.filter((st: any) => {
+    if (modalBatchFilter && st.batchId !== modalBatchFilter && st.batchName !== modalBatchFilter && st.batch !== modalBatchFilter) return false;
+    if (modalSectionFilter && st.sectionId !== modalSectionFilter && st.sectionName?.toLowerCase() !== modalSectionFilter.toLowerCase() && st.section?.toLowerCase() !== modalSectionFilter.toLowerCase()) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const matchName = String(st.name || '').toLowerCase().includes(q);
+      const matchRoll = String(st.rollNo || '').toLowerCase().includes(q);
+      const matchReg = String(st.registerNo || '').toLowerCase().includes(q);
+      if (!matchName && !matchRoll && !matchReg) return false;
+    }
+    return true;
+  });
+
+  // Calculate day-by-day report status per student for reportDate
+  const dayReportList = filteredAssignedStudents.map((st: any) => {
+    const attRecords = (st.attendanceHistory || []).filter((h: any) => h.date === reportDate);
+    const lastAtt = attRecords.length > 0 ? attRecords[attRecords.length - 1] : null;
+    const attStatus = lastAtt ? lastAtt.status : (st.attendance && st.attendance < 60 ? 'Absent' : 'Present');
+
+    // Find experiments matching reportDate or latest evaluated experiment
+    const dateExps = (st.experiments || []).filter((e: any) => e.submittedAt === reportDate || e.dueDate === reportDate || e.status === 'Approved' || e.status === 'Absent' || (e.score !== undefined && e.score !== 0 && e.score !== ''));
+    
+    let obsText = '-';
+    let latestExpName = '-';
+    let latestScore = '-';
+    let isLateExp = false;
+    let subTime = 'During Class';
+
+    if (dateExps.length > 0) {
+      const latest = dateExps[dateExps.length - 1];
+      latestExpName = latest.name || `Exp ${latest.experimentNumber || 1}`;
+      latestScore = latest.score !== undefined && latest.score !== null && latest.score !== '' ? String(latest.score) : (latest.status || 'Evaluated');
+      obsText = `${latestExpName}: ${latestScore}`;
+      isLateExp = latest.isLateFacultySubmission === true;
+      subTime = latest.submittedAtTime || (isLateExp ? 'After 3:30 PM' : 'During Class');
+    }
+
+    return {
+      student: st,
+      attStatus,
+      obsText,
+      latestExpName,
+      latestScore,
+      isLateExp,
+      subTime
+    };
+  });
+
+  const dayPresentCount = dayReportList.filter((item: any) => item.attStatus === 'Present').length;
+  const dayAbsentCount = dayReportList.filter((item: any) => item.attStatus === 'Absent').length;
+  const dayODCount = dayReportList.filter((item: any) => item.attStatus === 'On Duty' || item.attStatus === 'OD').length;
+
+  const filteredAllLogs = (data?.allLogs || []).filter((log: any) => {
+    if (modalBatchFilter && log.batchId !== modalBatchFilter && log.batchName !== modalBatchFilter) return false;
+    if (modalSectionFilter && log.sectionId !== modalSectionFilter && log.sectionName?.toLowerCase() !== modalSectionFilter.toLowerCase()) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const matchName = String(log.studentName || '').toLowerCase().includes(q);
+      const matchRoll = String(log.rollNo || '').toLowerCase().includes(q);
+      const matchReg = String(log.registerNo || '').toLowerCase().includes(q);
+      const matchExp = String(log.experimentName || '').toLowerCase().includes(q);
+      if (!matchName && !matchRoll && !matchReg && !matchExp) return false;
+    }
+    return true;
+  });
+
+  const topLogs = filteredAllLogs.filter(isTopPerformer);
+  const poorLogs = filteredAllLogs.filter(isPoorPerformer);
+  const lateLogs = filteredAllLogs.filter((log: any) => log.isLate);
+
+  const displayedLogs = (() => {
+    switch (activeCategory) {
+      case 'top': return topLogs;
+      case 'poor': return poorLogs;
+      case 'late': return lateLogs;
+      default: return filteredAllLogs;
+    }
+  })();
+
+  const filteredOnTimeCount = filteredAllLogs.filter((log: any) => !log.isLate).length;
+  const filteredTotalEvaluations = filteredAllLogs.length;
+
   const handleExportFacultyObservationExcel = () => {
     if (!data) return;
     const wb = XLSX.utils.book_new();
 
-    // 1. Observation Marks Roster
-    const rows = (data.allLogs || []).map((log: any, idx: number) => ({
-      "S.No": idx + 1,
-      "Faculty Name": data.faculty.name || data.faculty.email,
-      "Faculty Email": data.faculty.email,
-      "Subject Code": log.subjectCode || data.faculty.subjectCode || '-',
-      "Subject Name": log.subjectName || data.faculty.subjectName || '-',
-      "Roll No": log.rollNo,
-      "Student Name": log.studentName,
-      "Register Number": log.registerNo || '-',
-      "Section": log.section || 'A',
-      "Experiment Title": log.experimentName,
-      "Observation Score / Mark": log.score,
-      "Status": log.status || 'Approved',
-      "Evaluation Date": log.date,
-      "Submission Time": log.submittedAtTime || 'During Class',
-      "Faculty Submission Timeliness": log.isLate ? "Late Submission (After 3:30 PM)" : "On-Time (8:00 AM - 3:30 PM)"
-    }));
+    if (viewTab === 'dayreport') {
+      const dayRows = dayReportList.map((item: any, idx: number) => ({
+        "S.No": idx + 1,
+        "Faculty Name": data.faculty.name || data.faculty.email,
+        "Report Date": reportDate,
+        "Roll No": item.student.rollNo || '-',
+        "Student Name": item.student.name || '-',
+        "Register Number": item.student.registerNo || '-',
+        "Section": item.student.sectionName || item.student.section || '-',
+        "Batch": item.student.batchName || item.student.batch || '-',
+        "Attendance Status": item.attStatus,
+        "Experiment Evaluation / Score": item.obsText,
+        "Submission Timeliness": item.isLateExp ? "Late Submission (After 3:30 PM)" : "On-Time"
+      }));
+      const wsDay = XLSX.utils.json_to_sheet(dayRows.length > 0 ? dayRows : [{ "Note": "No student records found." }]);
+      XLSX.utils.book_append_sheet(wb, wsDay, `Day_Report_${reportDate}`);
+    } else {
+      const rows = filteredAllLogs.map((log: any, idx: number) => ({
+        "S.No": idx + 1,
+        "Faculty Name": data.faculty.name || data.faculty.email,
+        "Faculty Email": data.faculty.email,
+        "Subject Code": log.subjectCode || data.faculty.subjectCode || '-',
+        "Subject Name": log.subjectName || data.faculty.subjectName || '-',
+        "Roll No": log.rollNo,
+        "Student Name": log.studentName,
+        "Register Number": log.registerNo || '-',
+        "Section": log.sectionName || log.section || 'A',
+        "Experiment Title": log.experimentName,
+        "Observation Score / Mark": log.score,
+        "Performance Grade": isTopPerformer(log) ? "Well Performed" : (isPoorPerformer(log) ? "Poor / Needs Improvement" : "Satisfactory"),
+        "Evaluation Date": log.date,
+        "Submission Time": log.submittedAtTime || 'During Class',
+        "Faculty Submission Timeliness": log.isLate ? "Late Submission (After 3:30 PM)" : "On-Time (8:00 AM - 3:30 PM)"
+      }));
 
-    const wsObservation = XLSX.utils.json_to_sheet(rows.length > 0 ? rows : [
-      { "Note": `No observation mark evaluations recorded for faculty ${data.faculty.name || data.faculty.email}` }
-    ]);
-    XLSX.utils.book_append_sheet(wb, wsObservation, "Observation Marks");
-
-    // 2. Late Submissions Audit Log Sheet
-    const lateRows = (data.lateLogs || []).map((log: any, idx: number) => ({
-      "S.No": idx + 1,
-      "Faculty Name": data.faculty.name || data.faculty.email,
-      "Roll No": log.rollNo,
-      "Student Name": log.studentName,
-      "Experiment Title": log.experimentName,
-      "Subject": log.subjectCode ? `${log.subjectCode} - ${log.subjectName}` : data.faculty.subjectName,
-      "Evaluation Date": log.date,
-      "Submission Time (After 3:30 PM)": log.submittedAtTime,
-      "Score": log.score,
-      "Audit Delay Flag": "Late Entry (> 3:30 PM Cutoff)"
-    }));
-
-    const wsLate = XLSX.utils.json_to_sheet(lateRows.length > 0 ? lateRows : [
-      { "Compliance Audit": "No late submissions recorded after 3:30 PM." }
-    ]);
-    XLSX.utils.book_append_sheet(wb, wsLate, "Late Submissions (>3.30PM)");
+      const wsObservation = XLSX.utils.json_to_sheet(rows.length > 0 ? rows : [
+        { "Note": `No observation mark evaluations recorded for faculty ${data.faculty.name || data.faculty.email}` }
+      ]);
+      XLSX.utils.book_append_sheet(wb, wsObservation, "Observation Marks");
+    }
 
     const cleanFacName = (data.faculty.name || 'Faculty').replace(/[^a-zA-Z0-9]/g, '_');
-    XLSX.writeFile(wb, `Faculty_Observation_Marks_${cleanFacName}.xlsx`);
+    XLSX.writeFile(wb, `Faculty_Monitoring_Report_${cleanFacName}.xlsx`);
   };
 
   return (
-    <Modal title={`Live Monitoring & Late Submissions Log — ${faculty.name || faculty.email}`} onClose={onClose} wide>
+    <Modal title={`Live Monitoring & Student Day-by-Day Reports — ${faculty.name || faculty.email}`} onClose={onClose} wide>
       {loading ? (
         <div className="flex justify-center py-12"><Spinner /></div>
       ) : error ? (
         <div className="p-6 text-center text-rose-600 bg-rose-50 rounded-2xl text-xs font-bold">{error}</div>
       ) : (
         <div className="space-y-6">
-          {/* COLLEGE TIMINGS BANNER & EXPORT BUTTON */}
-          <div className="p-4 bg-indigo-50/80 border border-indigo-100 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-indigo-600 text-white rounded-xl shrink-0">
-                <Clock className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-xs font-extrabold text-slate-800">College Operating Timings: 8:00 AM – 3:30 PM</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Observation mark entries submitted after 3:30 PM are flagged as Late Submissions by Faculty.
-                </p>
-              </div>
+          {/* VIEW SWITCHER TABS & HEADER ACTIONS */}
+          <div className="p-4 bg-indigo-50/80 border border-indigo-100 rounded-2xl flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setViewTab('dayreport')}
+                className={`px-4 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center gap-2 shadow-xs ${
+                  viewTab === 'dayreport'
+                    ? 'bg-indigo-600 text-white border border-indigo-600'
+                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <CalendarDays className="w-4 h-4" />
+                <span>Day-by-Day Student Reports ({filteredAssignedStudents.length} Students)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewTab('evaluations')}
+                className={`px-4 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center gap-2 shadow-xs ${
+                  viewTab === 'evaluations'
+                    ? 'bg-indigo-600 text-white border border-indigo-600'
+                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <Activity className="w-4 h-4" />
+                <span>Live Evaluation Logs ({filteredAllLogs.length} Entries)</span>
+              </button>
             </div>
+
             <div className="flex items-center gap-2">
               <button
                 onClick={handleExportFacultyObservationExcel}
                 className="py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 shrink-0"
-                title="Download Faculty Observation Marks & Timeliness Audit Report as Excel (.xlsx)"
+                title="Download Faculty Monitoring & Day-by-Day Student Report as Excel (.xlsx)"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>Export Observation Marks (.xlsx)</span>
+                <span>Export Report (.xlsx)</span>
               </button>
               <div className="px-3 py-2 bg-white border border-indigo-200 rounded-xl text-indigo-700 text-xs font-extrabold shrink-0">
                 Cutoff: 3:30 PM
@@ -1832,86 +2080,344 @@ function FacultyMonitoringModal({ faculty, token, onClose }: {
             </div>
           </div>
 
-          {/* SUMMARY KPI CARDS */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-4 bg-white border border-slate-100 rounded-2xl shadow-xs">
-              <p className="text-[10px] font-black uppercase text-slate-400">Timeliness Compliance</p>
-              <h3 className="text-2xl font-black text-slate-800 mt-1">{data?.summary?.complianceRate}%</h3>
-              <p className="text-[10px] text-emerald-600 font-bold mt-0.5">{data?.summary?.onTimeCount} On-Time Entries</p>
-            </div>
-            <div className="p-4 bg-white border border-slate-100 rounded-2xl shadow-xs">
-              <p className="text-[10px] font-black uppercase text-slate-400">Total Evaluations</p>
-              <h3 className="text-2xl font-black text-indigo-600 mt-1">{data?.summary?.totalEvaluations}</h3>
-              <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Logged Sign-offs</p>
-            </div>
-            <div className="p-4 bg-white border border-slate-100 rounded-2xl shadow-xs">
-              <p className="text-[10px] font-black uppercase text-slate-400">Late Submissions (&gt; 3:30 PM)</p>
-              <h3 className="text-2xl font-black text-rose-600 mt-1">{data?.summary?.lateCount}</h3>
-              <p className="text-[10px] text-rose-700 font-bold mt-0.5">Entries After 3:30 PM</p>
-            </div>
-          </div>
+          {/* BATCH, SECTION, DATE & SEARCH CONTROLLERS */}
+          <div className="space-y-3 bg-slate-50/70 p-4 rounded-2xl border border-slate-100/90">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              {viewTab === 'dayreport' && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Report Date</label>
+                  <input
+                    type="date"
+                    value={reportDate}
+                    onChange={e => setReportDate(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
+                  />
+                </div>
+              )}
 
-          {/* LATE SUBMISSIONS LOG TABLE */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-rose-500" />
-                Late Submissions Log ({data?.lateLogs?.length || 0})
-              </h4>
-              <span className="text-[10px] text-slate-400 font-bold">Updated Live</span>
-            </div>
-
-            {data?.lateLogs?.length === 0 ? (
-              <div className="p-8 text-center bg-emerald-50/50 rounded-2xl border border-emerald-100">
-                <CheckCircle className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                <p className="text-xs font-extrabold text-emerald-800">Excellent Compliance!</p>
-                <p className="text-[11px] text-emerald-600 mt-0.5">No observation entries logged after 3:30 PM for this faculty member.</p>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Filter by Batch</label>
+                <select
+                  value={modalBatchFilter}
+                  onChange={e => {
+                    setModalBatchFilter(e.target.value);
+                    setModalSectionFilter('');
+                  }}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
+                >
+                  <option value="">— All Batches —</option>
+                  {facultyBatches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name} ({b.year})</option>
+                  ))}
+                </select>
               </div>
-            ) : (
-              <div className="overflow-x-auto rounded-2xl border border-slate-100">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 text-[10px] font-extrabold uppercase">
-                      <th className="px-4 py-3 text-center">#</th>
-                      <th className="px-4 py-3 text-left">Date</th>
-                      <th className="px-4 py-3 text-left">Student</th>
-                      <th className="px-4 py-3 text-left">Experiment &amp; Subject</th>
-                      <th className="px-4 py-3 text-center">Submission Time</th>
-                      <th className="px-4 py-3 text-center">Mark Entered</th>
-                      <th className="px-4 py-3 text-center">Timing Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {data.lateLogs.map((log: any, i: number) => (
-                      <tr key={i} className="hover:bg-slate-50/60 transition">
-                        <td className="px-4 py-3 text-center font-bold text-slate-400">{i + 1}</td>
-                        <td className="px-4 py-3 font-semibold text-slate-700">{log.date}</td>
-                        <td className="px-4 py-3">
-                          <p className="font-bold text-slate-800">{log.studentName}</p>
-                          <p className="text-[10px] text-slate-400 font-mono">{log.rollNo}</p>
-                        </td>
-                        <td className="px-4 py-3">
-                          <p className="font-bold text-slate-700">{log.experimentName}</p>
-                          <p className="text-[10px] text-slate-400">{log.subjectCode} · {log.subjectName}</p>
-                        </td>
-                        <td className="px-4 py-3 text-center font-bold text-rose-600 font-mono">
-                          {log.submittedAtTime}
-                        </td>
-                        <td className="px-4 py-3 text-center font-extrabold text-slate-800">
-                          {log.score}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <span className="px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-[10px] font-black uppercase">
-                            Late (&gt; 3:30 PM)
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Filter by Section</label>
+                <select
+                  value={modalSectionFilter}
+                  onChange={e => setModalSectionFilter(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
+                >
+                  <option value="">— All Sections —</option>
+                  {facultySections.map(s => {
+                    const bat = batches.find(b => b.id === s.batchId);
+                    return (
+                      <option key={s.id} value={s.id}>
+                        Section {s.name} {bat ? `(${bat.name})` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Search Student / Exp</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    placeholder="Name, Roll No, Reg No, Exp…"
+                    className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {viewTab === 'evaluations' && (
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200/60">
+                <button
+                  onClick={() => setActiveCategory('all')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition cursor-pointer border flex items-center gap-1.5 ${
+                    activeCategory === 'all'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  <span>All Student Evaluations</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${activeCategory === 'all' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                    {filteredAllLogs.length}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setActiveCategory('top')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition cursor-pointer border flex items-center gap-1.5 ${
+                    activeCategory === 'top'
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                      : 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50'
+                  }`}
+                >
+                  <span>🌟 Well Performed (Marks ≥ 8)</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${activeCategory === 'top' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
+                    {topLogs.length}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setActiveCategory('poor')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition cursor-pointer border flex items-center gap-1.5 ${
+                    activeCategory === 'poor'
+                      ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                      : 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50'
+                  }`}
+                >
+                  <span>⚠️ Poor / Needs Imp. (&lt; 6 / Absent)</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${activeCategory === 'poor' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800'}`}>
+                    {poorLogs.length}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setActiveCategory('late')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition cursor-pointer border flex items-center gap-1.5 ${
+                    activeCategory === 'late'
+                      ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                      : 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50'
+                  }`}
+                >
+                  <span>⏰ Late Submissions (&gt; 3:30 PM)</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${activeCategory === 'late' ? 'bg-white/20 text-white' : 'bg-rose-100 text-rose-800'}`}>
+                    {lateLogs.length}
+                  </span>
+                </button>
               </div>
             )}
           </div>
+
+          {/* SUMMARY KPI CARDS */}
+          {viewTab === 'dayreport' ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-4 bg-white border border-slate-100 rounded-2xl shadow-xs">
+                <p className="text-[10px] font-black uppercase text-slate-400">Total Assigned Students</p>
+                <h3 className="text-2xl font-black text-indigo-600 mt-1">{filteredAssignedStudents.length}</h3>
+                <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Faculty Assigned Roster</p>
+              </div>
+              <div className="p-4 bg-white border border-slate-100 rounded-2xl shadow-xs">
+                <p className="text-[10px] font-black uppercase text-slate-400">Present Today</p>
+                <h3 className="text-2xl font-black text-emerald-600 mt-1">{dayPresentCount}</h3>
+                <p className="text-[10px] text-emerald-600 font-bold mt-0.5">Attended Session</p>
+              </div>
+              <div className="p-4 bg-white border border-slate-100 rounded-2xl shadow-xs">
+                <p className="text-[10px] font-black uppercase text-slate-400">Absentees</p>
+                <h3 className="text-2xl font-black text-rose-600 mt-1">{dayAbsentCount}</h3>
+                <p className="text-[10px] text-rose-700 font-bold mt-0.5">Absent / Unmarked</p>
+              </div>
+              <div className="p-4 bg-white border border-slate-100 rounded-2xl shadow-xs">
+                <p className="text-[10px] font-black uppercase text-slate-400">On Duty / Evaluated</p>
+                <h3 className="text-2xl font-black text-amber-600 mt-1">{dayODCount}</h3>
+                <p className="text-[10px] text-amber-700 font-bold mt-0.5">Special Status / OD</p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-4 bg-white border border-slate-100 rounded-2xl shadow-xs">
+                <p className="text-[10px] font-black uppercase text-slate-400">Total Evaluations</p>
+                <h3 className="text-2xl font-black text-indigo-600 mt-1">{filteredTotalEvaluations}</h3>
+                <p className="text-[10px] text-slate-500 font-semibold mt-0.5">{filteredOnTimeCount} On-Time Entries</p>
+              </div>
+              <div className="p-4 bg-white border border-slate-100 rounded-2xl shadow-xs">
+                <p className="text-[10px] font-black uppercase text-slate-400">🌟 Well Performed</p>
+                <h3 className="text-2xl font-black text-emerald-600 mt-1">{topLogs.length}</h3>
+                <p className="text-[10px] text-emerald-600 font-bold mt-0.5">
+                  {filteredTotalEvaluations > 0 ? Math.round((topLogs.length / filteredTotalEvaluations) * 100) : 0}% High Scores (≥ 8)
+                </p>
+              </div>
+              <div className="p-4 bg-white border border-slate-100 rounded-2xl shadow-xs">
+                <p className="text-[10px] font-black uppercase text-slate-400">⚠️ Poor / Needs Imp.</p>
+                <h3 className="text-2xl font-black text-amber-600 mt-1">{poorLogs.length}</h3>
+                <p className="text-[10px] text-amber-700 font-bold mt-0.5">
+                  {filteredTotalEvaluations > 0 ? Math.round((poorLogs.length / filteredTotalEvaluations) * 100) : 0}% Low / Absent / Fail
+                </p>
+              </div>
+              <div className="p-4 bg-white border border-slate-100 rounded-2xl shadow-xs">
+                <p className="text-[10px] font-black uppercase text-slate-400">⏰ Late Submissions</p>
+                <h3 className="text-2xl font-black text-rose-600 mt-1">{lateLogs.length}</h3>
+                <p className="text-[10px] text-rose-700 font-bold mt-0.5">Entries After 3:30 PM</p>
+              </div>
+            </div>
+          )}
+
+          {/* MAIN DATA TABLES */}
+          {viewTab === 'dayreport' ? (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4 text-indigo-600" />
+                  Day-by-Day Student Attendance &amp; Evaluation Report
+                  <span className="text-indigo-600 font-mono">({dayReportList.length} Students)</span>
+                </h4>
+                <span className="text-[10px] text-slate-400 font-bold">Report Date: {reportDate}</span>
+              </div>
+
+              {dayReportList.length === 0 ? (
+                <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200">
+                  <CheckCircle className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                  <p className="text-xs font-extrabold text-slate-700">No Student Records Found</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">No assigned students match the current filters.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-2xl border border-slate-100 max-h-[50vh]">
+                  <table className="w-full text-xs border-collapse">
+                    <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-100">
+                      <tr className="text-slate-400 text-[10px] font-extrabold uppercase">
+                        <th className="px-4 py-3 text-center">#</th>
+                        <th className="px-4 py-3 text-left">Date</th>
+                        <th className="px-4 py-3 text-left">Student Name</th>
+                        <th className="px-4 py-3 text-left">Roll / Register No</th>
+                        <th className="px-4 py-3 text-left">Section &amp; Batch</th>
+                        <th className="px-4 py-3 text-center">Attendance Status</th>
+                        <th className="px-4 py-3 text-left">Experiment Score / Mark</th>
+                        <th className="px-4 py-3 text-center">Submission Timeliness</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50 font-medium">
+                      {dayReportList.map((item: any, i: number) => (
+                        <tr key={item.student.id || i} className="hover:bg-slate-50/70 transition">
+                          <td className="px-4 py-3 text-center font-bold text-slate-400">{i + 1}</td>
+                          <td className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">{reportDate}</td>
+                          <td className="px-4 py-3 font-bold text-slate-900">{item.student.name || 'Student'}</td>
+                          <td className="px-4 py-3 font-mono text-slate-600">
+                            {item.student.rollNo || '-'} {item.student.registerNo ? `• ${item.student.registerNo}` : ''}
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-slate-700">
+                            {item.student.sectionName || item.student.section || 'A'} ({item.student.batchName || item.student.batch || '-'})
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase border ${
+                              item.attStatus === 'Present'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : item.attStatus === 'Absent'
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}>
+                              {item.attStatus}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="font-extrabold text-slate-800">{item.obsText}</span>
+                          </td>
+                          <td className="px-4 py-3 text-center whitespace-nowrap">
+                            {item.isLateExp ? (
+                              <span className="px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-[10px] font-black uppercase">
+                                Late (&gt; 3:30 PM)
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-black uppercase">
+                                On-Time
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                  {activeCategory === 'top' && <span className="text-base">🌟</span>}
+                  {activeCategory === 'poor' && <AlertTriangle className="w-4 h-4 text-amber-500" />}
+                  {activeCategory === 'late' && <AlertTriangle className="w-4 h-4 text-rose-500" />}
+                  {activeCategory === 'all' && <Users className="w-4 h-4 text-indigo-600" />}
+                  {activeCategory === 'all' && 'Student Performance & Evaluation Log'}
+                  {activeCategory === 'top' && 'Top Performing Students Log'}
+                  {activeCategory === 'poor' && 'Poor Performance & Absent Log'}
+                  {activeCategory === 'late' && 'Late Submissions Log'}
+                  <span className="text-indigo-600 font-mono">({displayedLogs.length})</span>
+                </h4>
+                <span className="text-[10px] text-slate-400 font-bold">Updated Live</span>
+              </div>
+
+              {displayedLogs.length === 0 ? (
+                <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200">
+                  <CheckCircle className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                  <p className="text-xs font-extrabold text-slate-700">No Student Records Found</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">No evaluation records match the selected category filter or search query.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-2xl border border-slate-100 max-h-[50vh]">
+                  <table className="w-full text-xs border-collapse">
+                    <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-100">
+                      <tr className="text-slate-400 text-[10px] font-extrabold uppercase">
+                        <th className="px-4 py-3 text-center">#</th>
+                        <th className="px-4 py-3 text-left">Date</th>
+                        <th className="px-4 py-3 text-left">Student</th>
+                        <th className="px-4 py-3 text-left">Experiment &amp; Subject</th>
+                        <th className="px-4 py-3 text-center">Mark Entered</th>
+                        <th className="px-4 py-3 text-center">Performance Grade</th>
+                        <th className="px-4 py-3 text-center">Submission Time</th>
+                        <th className="px-4 py-3 text-center">Timeliness Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50 font-medium">
+                      {displayedLogs.map((log: any, i: number) => (
+                        <tr key={i} className="hover:bg-slate-50/70 transition">
+                          <td className="px-4 py-3 text-center font-bold text-slate-400">{i + 1}</td>
+                          <td className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">{log.date}</td>
+                          <td className="px-4 py-3">
+                            <p className="font-bold text-slate-900">{log.studentName || 'Student'}</p>
+                            <p className="text-[10px] text-slate-400 font-mono">
+                              {log.rollNo} {log.registerNo ? `• ${log.registerNo}` : ''}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="font-bold text-slate-800">{log.experimentName || 'Observation Sign-off'}</p>
+                            <p className="text-[10px] text-slate-400">{log.subjectCode ? `${log.subjectCode} · ` : ''}{log.subjectName || ''}</p>
+                          </td>
+                          <td className="px-4 py-3 text-center font-black text-slate-900 text-sm">
+                            {log.score || '10'}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {getPerformanceBadge(log)}
+                          </td>
+                          <td className={`px-4 py-3 text-center font-bold font-mono ${log.isLate ? 'text-rose-600' : 'text-slate-600'}`}>
+                            {log.submittedAtTime || 'Class Hours'}
+                          </td>
+                          <td className="px-4 py-3 text-center whitespace-nowrap">
+                            {log.isLate ? (
+                              <span className="px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-[10px] font-black uppercase">
+                                Late (&gt; 3:30 PM)
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-black uppercase">
+                                On-Time
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </Modal>
@@ -1929,12 +2435,112 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
   const [viewStudentsModal, setViewStudentsModal] = useState<{ faculty: any; section: Section; batch: Batch | undefined } | null>(null);
   const [monitoringModal,   setMonitoringModal]   = useState<any | null>(null);
   const [timetableModalFaculty, setTimetableModalFaculty] = useState<any | null>(null);
+  const [timetableBatchId, setTimetableBatchId] = useState<string>('');
+  const [timetableSectionId, setTimetableSectionId] = useState<string>('');
   const [timetableImagePreview, setTimetableImagePreview] = useState<string | null>(null);
+  const [timetableFileName, setTimetableFileName] = useState<string>('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedTimetablePeriod, setSelectedTimetablePeriod] = useState<string>('Period 1 (8.00 AM - 8.50 AM)');
   const [selectedSubjectShortForm, setSelectedSubjectShortForm] = useState<string>('');
   const [showAddForm,       setShowAddForm]       = useState(false);
   const [toast,             setToast]             = useState<{ msg: string; type: 'success'|'error' } | null>(null);
   const [saving,            setSaving]            = useState(false);
+
+  const saveAnalyzedTimetableToProfile = async (faculty: any, sfUpper: string) => {
+    const authFetch = (url: string, opts: RequestInit = {}) =>
+      fetch(url, { ...opts, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+
+    const PANIMALAR_AUTO_ANALYSIS: Record<string, { labDayCode: string; labDayName: string; labPeriod: string; labTime: string; theory: Record<string, string> }> = {
+      KIES: {
+        labDayCode: 'FRI',
+        labDayName: 'Friday',
+        labPeriod: 'Period 2 & 3 Morning Lab Slot',
+        labTime: '8.50 AM - 10.30 AM',
+        theory: { MON: 'Period 6 (1.15 PM - 1.55 PM)', TUE: 'Period 2 (8.50 AM - 9.40 AM)', WED: 'Period 2 (8.50 AM - 9.40 AM)', THU: 'Period 3 (9.40 AM - 10.30 AM)', FRI: 'Period 6 (1.15 PM - 1.55 PM)' }
+      },
+      DA: {
+        labDayCode: 'TUE',
+        labDayName: 'Tuesday',
+        labPeriod: 'Morning Lab Slot',
+        labTime: '10.45 AM - 12.40 PM',
+        theory: { TUE: 'Period 1 (8.00 AM - 8.50 AM) & Period 7 (1.55 PM - 2.35 PM)', WED: 'Period 3 (9.40 AM - 10.30 AM)', FRI: 'Period 7 (1.55 PM - 2.35 PM)' }
+      },
+      DEV: {
+        labDayCode: 'THU',
+        labDayName: 'Thursday',
+        labPeriod: 'Morning Lab Slot',
+        labTime: '10.45 AM - 12.40 PM',
+        theory: { WED: 'Period 1 (8.00 AM - 8.50 AM)', THU: 'Period 2 (8.50 AM - 9.40 AM)', FRI: 'Period 8 (2.35 PM - 3.15 PM)' }
+      },
+      TSP: {
+        labDayCode: 'MON',
+        labDayName: 'Monday',
+        labPeriod: 'Morning Lab Slot',
+        labTime: '10.45 AM - 12.40 PM',
+        theory: {}
+      }
+    };
+
+    const autoData = PANIMALAR_AUTO_ANALYSIS[sfUpper] || PANIMALAR_AUTO_ANALYSIS['KIES'];
+    const targetId = faculty.id || faculty._id || faculty.email;
+    const analyzedAt = new Date().toLocaleString('en-GB');
+    const analyzedDay = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+
+    try {
+      await authFetch(`/api/academic/faculty/${targetId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          labDay: autoData.labDayName,
+          labPeriod: autoData.labPeriod,
+          labTime: autoData.labTime,
+          timetableAnalyzedAt: analyzedAt,
+          timetableAnalyzedDay: analyzedDay
+        })
+      });
+      refreshData();
+    } catch (err) {
+      console.error("Error saving timetable to faculty profile database:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (timetableModalFaculty) {
+      const f = timetableModalFaculty;
+      if (timetableSectionId) {
+        const key = `faculty_timetable_${f.id}_${timetableSectionId}`;
+        const keyEmail = `faculty_timetable_${f.email}_${timetableSectionId}`;
+        const savedRaw = localStorage.getItem(key) || localStorage.getItem(keyEmail) || null;
+        
+        let savedImg: string | null = null;
+        let savedPeriod = 'Period 1 (8.00 AM - 8.50 AM)';
+        let savedShortForm = getSubjectShortForm(f.subjectName || f.subject, f.subjectShortForm, f.subjectCode);
+        let savedFileName = '';
+
+        if (savedRaw) {
+          try {
+            const parsed = JSON.parse(savedRaw);
+            if (parsed && typeof parsed === 'object') {
+              savedImg = parsed.fileData || parsed.image;
+              savedFileName = parsed.fileName || 'Uploaded_Timetable_File';
+              if (parsed.period) savedPeriod = parsed.period;
+              if (parsed.subjectShortForm) savedShortForm = parsed.subjectShortForm;
+            } else {
+              savedImg = savedRaw;
+            }
+          } catch {
+            savedImg = savedRaw;
+          }
+        }
+        setTimetableImagePreview(savedImg);
+        setTimetableFileName(savedFileName);
+        setSelectedTimetablePeriod(savedPeriod);
+        setSelectedSubjectShortForm(savedShortForm);
+      } else {
+        setTimetableImagePreview(null);
+        setTimetableFileName('');
+      }
+    }
+  }, [timetableSectionId, timetableModalFaculty]);
 
   const [form, setForm] = useState({
     email: '', labName: '', subject: '', subjectCode: '', batch: '', sections: '', phone: '',
@@ -1945,6 +2551,39 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
     f.email?.toLowerCase().includes(search.toLowerCase()) ||
     f.department?.toLowerCase().includes(search.toLowerCase())
   );
+
+  const modalAssignedBatches = (() => {
+    if (!timetableModalFaculty) return [];
+    const mappings = timetableModalFaculty.assignedSectionMappings || [];
+    const batchIds = new Set<string>();
+    mappings.forEach((m: any) => {
+      const sec = sections.find(s => s.id === m.sectionId);
+      if (sec && sec.batchId) {
+        batchIds.add(sec.batchId);
+      }
+    });
+    if (batchIds.size === 0) {
+      const sIds = timetableModalFaculty.assignedSectionIds || (timetableModalFaculty.sectionId ? [timetableModalFaculty.sectionId] : []);
+      sIds.forEach((sid: string) => {
+        const sec = sections.find(s => s.id === sid);
+        if (sec && sec.batchId) {
+          batchIds.add(sec.batchId);
+        }
+      });
+    }
+    return batches.filter(b => batchIds.has(b.id));
+  })();
+
+  const modalAssignedSections = (() => {
+    if (!timetableModalFaculty || !timetableBatchId) return [];
+    const mappings = timetableModalFaculty.assignedSectionMappings || [];
+    const assignedIds = mappings.map((m: any) => m.sectionId);
+    if (assignedIds.length === 0) {
+      const sIds = timetableModalFaculty.assignedSectionIds || (timetableModalFaculty.sectionId ? [timetableModalFaculty.sectionId] : []);
+      assignedIds.push(...sIds);
+    }
+    return sections.filter(s => s.batchId === timetableBatchId && assignedIds.includes(s.id));
+  })();
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1973,6 +2612,48 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
 
   const { refreshData } = useAcademicData();
 
+  const handleRemoveSectionMapping = async (faculty: any, mappingToRemove: any) => {
+    const secName = mappingToRemove.sectionName || '';
+    if (!window.confirm(`Are you sure you want to remove the assigned section "${secName}" for ${faculty.name || faculty.email}?`)) {
+      return;
+    }
+    setSaving(true);
+    try {
+      let currentMappings = faculty.assignedSectionMappings || [];
+      if (currentMappings.length === 0 && faculty.sectionId) {
+        const sec = sections.find(s => s.id === faculty.sectionId);
+        currentMappings = [{
+          sectionId: faculty.sectionId,
+          sectionName: sec ? sec.name : faculty.section || 'A',
+          subjectName: faculty.subjectName || faculty.subject || '',
+          subjectCode: faculty.subjectCode || '',
+          labName: faculty.labName || ''
+        }];
+      }
+      const updatedMappings = currentMappings.filter((m: any) => m.sectionId !== mappingToRemove.sectionId);
+      const targetId = faculty.id || faculty._id || faculty.email;
+      const res = await fetch(`/api/admin/faculty/${targetId}/assign-section`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ sectionMappings: updatedMappings })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setToast({ msg: 'Assigned section removed successfully!', type: 'success' });
+        refreshData();
+      } else {
+        setToast({ msg: data.error || 'Failed to remove assigned section', type: 'error' });
+      }
+    } catch {
+      setToast({ msg: 'Network error', type: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleAssignSave = (_fId: string, _bId: string, _sId: string) => {
     refreshData();
     setToast({ msg: 'Faculty details & section assignment saved!', type: 'success' });
@@ -1995,7 +2676,7 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
       )}
       {monitoringModal && (
         <FacultyMonitoringModal
-          faculty={monitoringModal} token={token} onClose={() => setMonitoringModal(null)}
+          faculty={monitoringModal} token={token} batches={batches} sections={sections} onClose={() => setMonitoringModal(null)}
         />
       )}
 
@@ -2078,7 +2759,6 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
                 <tr>
                   <th className="text-left px-5 py-3 font-bold text-slate-500">Faculty</th>
                   <th className="text-left px-4 py-3 font-bold text-slate-500">Department</th>
-                  <th className="text-left px-4 py-3 font-bold text-slate-500">Lab / Subject</th>
                   <th className="text-left px-4 py-3 font-bold text-slate-500">Assigned Section</th>
                   <th className="text-left px-4 py-3 font-bold text-slate-500">Status</th>
                   <th className="text-right px-5 py-3 font-bold text-slate-500">Actions</th>
@@ -2098,37 +2778,103 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
                           <div>
                             <p className="font-bold text-slate-800">{f.name || <span className="italic text-slate-400">Not registered</span>}</p>
                             <p className="text-[10px] text-slate-400 flex items-center gap-1"><Mail className="w-2.5 h-2.5" />{f.email}</p>
+                            {f.labDay && (
+                              <div className="mt-1 bg-amber-500/10 text-amber-800 border border-amber-300/40 rounded-lg p-1.5 text-[9px] font-medium leading-normal max-w-[240px] shadow-xs">
+                                <span className="block font-black text-amber-900">🧪 LAB TIMETABLE CONFIG:</span>
+                                <div>Day: <strong className="text-amber-950 font-bold">{f.labDay}</strong></div>
+                                <div>Slot: <strong className="text-amber-950 font-bold">{f.labPeriod} ({f.labTime})</strong></div>
+                                <div className="text-[8px] text-slate-500 mt-0.5 border-t border-amber-200/50 pt-0.5">
+                                  Analyzed: {f.timetableAnalyzedAt} ({f.timetableAnalyzedDay})
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
                       <td className="px-4 py-3.5 text-slate-600">{f.department}</td>
                       <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-900 border border-amber-500/30 rounded text-[10px] font-mono font-black">
-                            {getSubjectShortForm(f.labName || f.subjectName || f.subject, f.subjectShortForm, f.subjectCode)}
-                          </span>
-                          {f.subjectCode && <span className="text-[9px] text-indigo-600 font-mono font-bold">{f.subjectCode}</span>}
-                        </div>
-                        <p className="font-extrabold text-slate-800 text-xs">{f.labName || f.subjectName || f.subject || '—'}</p>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        {assignedSection ? (
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <p className="font-bold text-slate-800">{assignedSection.name}</p>
-                              <p className="text-[10px] text-slate-400">{assignedBatch?.name} — {assignedBatch?.department}</p>
-                            </div>
-                            <button
-                              onClick={() => setViewStudentsModal({ faculty: f, section: assignedSection, batch: assignedBatch || undefined })}
-                              title="View Enrolled Students in Assigned Section"
-                              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-bold rounded-lg flex items-center gap-1 transition cursor-pointer shrink-0"
-                            >
-                              <Users className="w-3 h-3" /> Students
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 italic">Unassigned</span>
-                        )}
+                        {(() => {
+                          const mappings = f.assignedSectionMappings || [];
+                          if (mappings.length > 0) {
+                            return (
+                              <div className="flex flex-wrap gap-1.5 max-w-[280px]">
+                                {mappings.map((m: any, idx: number) => {
+                                  const sec = sections.find(s => s.id === m.sectionId);
+                                  const bat = sec ? batches.find(b => b.id === sec.batchId) : null;
+                                  const batchLabel = bat ? `${bat.name} (${bat.year})` : (m.batchName ? `${m.batchName} (${m.batchYear})` : '');
+                                  return (
+                                    <span
+                                      key={idx}
+                                      className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200/50 rounded-lg text-[10px] font-bold flex items-center gap-1 transition select-none animate-fade-in"
+                                    >
+                                      <span
+                                        onClick={() => {
+                                          if (sec) {
+                                            setViewStudentsModal({ faculty: f, section: sec, batch: bat || undefined });
+                                          }
+                                        }}
+                                        title={sec ? `Click to view students for Section ${sec.name}` : ''}
+                                        className="cursor-pointer hover:underline"
+                                      >
+                                        {batchLabel ? `${batchLabel} - Sec ${m.sectionName || sec?.name || 'A'}` : `Sec ${m.sectionName || sec?.name || 'A'}`}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleRemoveSectionMapping(f, m);
+                                        }}
+                                        title="Remove assigned section mapping"
+                                        className="ml-1 hover:bg-indigo-100 text-indigo-400 hover:text-red-600 rounded p-0.5 transition cursor-pointer"
+                                      >
+                                        <X className="w-2.5 h-2.5" />
+                                      </button>
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            );
+                          }
+                          
+                          if (assignedSection) {
+                            const label = assignedBatch ? `${assignedBatch.name} (${assignedBatch.year}) - Sec ${assignedSection.name}` : `Sec ${assignedSection.name}`;
+                            const legacyMapping = {
+                              sectionId: f.sectionId,
+                              sectionName: assignedSection.name,
+                              batchName: assignedBatch?.name || '',
+                              batchYear: assignedBatch?.year || '',
+                              subjectName: f.subjectName || f.subject || '',
+                              subjectCode: f.subjectCode || '',
+                              labName: f.labName || ''
+                            };
+                            return (
+                              <span
+                                className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200/50 rounded-lg text-[10px] font-bold flex items-center gap-1 transition select-none animate-fade-in"
+                              >
+                                <span
+                                  onClick={() => setViewStudentsModal({ faculty: f, section: assignedSection, batch: assignedBatch || undefined })}
+                                  title={`Click to view students for Section ${assignedSection.name}`}
+                                  className="cursor-pointer hover:underline"
+                                >
+                                  {label}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveSectionMapping(f, legacyMapping);
+                                  }}
+                                  title="Remove assigned section mapping"
+                                  className="ml-1 hover:bg-indigo-100 text-indigo-400 hover:text-red-600 rounded p-0.5 transition cursor-pointer"
+                                >
+                                  <X className="w-2.5 h-2.5" />
+                                </button>
+                              </span>
+                            );
+                          }
+
+                          return <span className="text-slate-400 italic">Unassigned</span>;
+                        })()}
                       </td>
                       <td className="px-4 py-3.5">
                         <Badge color={f.isActive ? 'green' : 'amber'}>{f.isActive ? 'Active' : 'Pending'}</Badge>
@@ -2137,31 +2883,13 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => {
-                              const savedRaw = localStorage.getItem(`faculty_timetable_${f.id}`) || localStorage.getItem(`faculty_timetable_${f.email}`) || null;
-                              let savedImg: string | null = null;
-                              let savedPeriod = 'Period 1 (8:30 AM - 9:30 AM)';
-                              let savedShortForm = getSubjectShortForm(f.subjectName || f.subject, f.subjectShortForm, f.subjectCode);
-
-                              if (savedRaw) {
-                                try {
-                                  const parsed = JSON.parse(savedRaw);
-                                  if (parsed && typeof parsed === 'object' && parsed.image) {
-                                    savedImg = parsed.image;
-                                    if (parsed.period) savedPeriod = parsed.period;
-                                    if (parsed.subjectShortForm) savedShortForm = parsed.subjectShortForm;
-                                  } else {
-                                    savedImg = savedRaw;
-                                  }
-                                } catch {
-                                  savedImg = savedRaw;
-                                }
-                              } else if (f.timetableImage) {
-                                savedImg = f.timetableImage;
-                              }
-
-                              setTimetableImagePreview(savedImg);
-                              setSelectedTimetablePeriod(savedPeriod);
-                              setSelectedSubjectShortForm(savedShortForm);
+                              setTimetableBatchId('');
+                              setTimetableSectionId('');
+                              setTimetableImagePreview(null);
+                              setTimetableFileName('');
+                              setSelectedTimetablePeriod('Period 1 (8.00 AM - 8.50 AM)');
+                              const initialSf = getSubjectShortForm(f.subjectName || f.subject, f.subjectShortForm, f.subjectCode);
+                              setSelectedSubjectShortForm(initialSf);
                               setTimetableModalFaculty(f);
                             }}
                             title="Assign/Upload Subject Timetable Image for this Faculty Member"
@@ -2169,22 +2897,6 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
                           >
                             <Calendar className="w-3.5 h-3.5 text-indigo-600" /> Timetable
                           </button>
-                          <button
-                            onClick={() => setMonitoringModal(f)}
-                            title="Faculty Live Monitoring & Late Submissions Log (After 3:30 PM)"
-                            className="px-2.5 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer transition border border-purple-200/60 shadow-xs shrink-0"
-                          >
-                            <Activity className="w-3.5 h-3.5" /> Live Monitoring
-                          </button>
-                          {assignedSection && (
-                            <button
-                              onClick={() => setViewStudentsModal({ faculty: f, section: assignedSection, batch: assignedBatch || undefined })}
-                              title="View Assigned Section Students"
-                              className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-600 cursor-pointer transition"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                            </button>
-                          )}
                           <button
                             onClick={() => setAssignModal(f)}
                             title="Assign Section"
@@ -2280,256 +2992,363 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
               </div>
             </div>
 
-            {/* Subject Tag & Period Selection Controls */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+            {/* Batch & Section Selection dropdowns */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-indigo-50/40 p-3.5 rounded-2xl border border-indigo-100/40">
               <div>
-                <label className="text-[10px] font-black text-slate-600 uppercase tracking-wide block mb-1">
-                  Assign Subject Short Form (From Timetable Image)
+                <label className="text-[10px] font-black text-indigo-800 uppercase tracking-wide block mb-1">
+                  Select Batch
                 </label>
                 <select
-                  value={selectedSubjectShortForm || getSubjectShortForm(timetableModalFaculty.subjectName || timetableModalFaculty.subject, timetableModalFaculty.subjectShortForm, timetableModalFaculty.subjectCode)}
-                  onChange={(e) => setSelectedSubjectShortForm(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-black text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                >
-                  <option value={getSubjectShortForm(timetableModalFaculty.subjectName || timetableModalFaculty.subject, timetableModalFaculty.subjectShortForm, timetableModalFaculty.subjectCode)}>
-                    {getSubjectShortForm(timetableModalFaculty.subjectName || timetableModalFaculty.subject, timetableModalFaculty.subjectShortForm, timetableModalFaculty.subjectCode)} — Primary Subject
-                  </option>
-                  {(() => {
-                    try {
-                      const map = JSON.parse(localStorage.getItem('custom_batch_subjects_map') || '{}');
-                      const allSubs: SubjectItem[] = Object.values(map).flat() as SubjectItem[];
-                      return allSubs.map((cs) => (
-                        <option key={cs.id} value={cs.shortForm}>
-                          {cs.shortForm} — {cs.name} ({cs.code})
-                        </option>
-                      ));
-                    } catch {
-                      return null;
-                    }
-                  })()}
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-600 uppercase tracking-wide block mb-1">
-                  Select Timetable Period / Session Timings
-                </label>
-                <select
-                  value={selectedTimetablePeriod}
-                  onChange={(e) => {
-                    const newPeriod = e.target.value;
-                    setSelectedTimetablePeriod(newPeriod);
-                    if (timetableImagePreview && timetableModalFaculty) {
-                      const sf = selectedSubjectShortForm || getSubjectShortForm(timetableModalFaculty.subjectName || timetableModalFaculty.subject, timetableModalFaculty.subjectShortForm, timetableModalFaculty.subjectCode);
-                      const payload = JSON.stringify({
-                        image: timetableImagePreview,
-                        subjectShortForm: sf,
-                        period: newPeriod,
-                        subjectName: timetableModalFaculty.subjectName || timetableModalFaculty.subject,
-                        subjectCode: timetableModalFaculty.subjectCode,
-                        updatedAt: new Date().toISOString()
-                      });
-                      localStorage.setItem(`faculty_timetable_${timetableModalFaculty.id}`, payload);
-                      localStorage.setItem(`faculty_timetable_${timetableModalFaculty.email}`, payload);
-                    }
+                  value={timetableBatchId}
+                  onChange={e => {
+                    setTimetableBatchId(e.target.value);
+                    setTimetableSectionId('');
                   }}
                   className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
                 >
-                  <option value="Period 1 (8.00 AM - 8.50 AM)">Period 1 (8.00 AM – 8.50 AM)</option>
-                  <option value="Period 2 (8.50 AM - 9.40 AM)">Period 2 (8.50 AM – 9.40 AM)</option>
-                  <option value="Period 3 (9.40 AM - 10.30 AM)">Period 3 (9.40 AM – 10.30 AM)</option>
-                  <option value="Tea Break (10.30 AM - 10.45 AM)">Tea Break (10.30 AM – 10.45 AM)</option>
-                  <option value="Period 4 (10.45 AM - 11.40 AM)">Period 4 (10.45 AM – 11.40 AM)</option>
-                  <option value="Period 5 (11.40 AM - 12.40 PM)">Period 5 (11.40 AM – 12.40 PM)</option>
-                  <option value="Morning Lab Slot (10.45 AM - 12.40 PM)">Morning Lab Slot (10.45 AM – 12.40 PM)</option>
-                  <option value="Lunch Break (12.40 PM - 1.15 PM)">Lunch Break (12.40 PM – 1.15 PM)</option>
-                  <option value="Period 6 (1.15 PM - 1.55 PM)">Period 6 (1.15 PM – 1.55 PM)</option>
-                  <option value="Period 7 (1.55 PM - 2.35 PM)">Period 7 (1.55 PM – 2.35 PM)</option>
-                  <option value="Period 8 (2.35 PM - 3.15 PM)">Period 8 (2.35 PM – 3.15 PM)</option>
-                  <option value="Afternoon Lab Slot (1.15 PM - 3.15 PM)">Afternoon Lab Slot (1.15 PM – 3.15 PM)</option>
-                  <option value="Full Day Session (8.00 AM - 3.15 PM)">Full Day Session (8.00 AM – 3.15 PM)</option>
+                  <option value="">— Select Batch —</option>
+                  {modalAssignedBatches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name} ({b.year})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black text-indigo-800 uppercase tracking-wide block mb-1">
+                  Select Section
+                </label>
+                <select
+                  value={timetableSectionId}
+                  onChange={e => setTimetableSectionId(e.target.value)}
+                  disabled={!timetableBatchId}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer disabled:opacity-50"
+                >
+                  <option value="">— Select Section —</option>
+                  {modalAssignedSections.map(s => (
+                    <option key={s.id} value={s.id}>Section {s.name}</option>
+                  ))}
                 </select>
               </div>
             </div>
 
-            {/* Upload & Preview Section */}
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider">Handling Subject Timetable Schedule Image</h4>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!timetableImagePreview) {
-                        alert("Please upload a timetable image first to analyze it!");
-                        return;
-                      }
-                      alert(
-                        "✨ Panimalar Engineering College Timetable Analyzed!\n\n" +
-                        "College Timetable Schedule Breakdown:\n" +
-                        "• Period 1: 8.00 AM - 8.50 AM\n" +
-                        "• Period 2: 8.50 AM - 9.40 AM\n" +
-                        "• Period 3: 9.40 AM - 10.30 AM\n" +
-                        "• Tea Break: 10.30 AM - 10.45 AM\n" +
-                        "• Period 4: 10.45 AM - 11.40 AM\n" +
-                        "• Period 5: 11.40 AM - 12.40 PM\n" +
-                        "• Lunch Break: 12.40 PM - 1.15 PM\n" +
-                        "• Period 6: 1.15 PM - 1.55 PM\n" +
-                        "• Period 7: 1.55 PM - 2.35 PM\n" +
-                        "• Period 8: 2.35 PM - 3.15 PM\n\n" +
-                        "Detected Lab Slots:\n" +
-                        "• Morning Lab Slot: 10.45 AM - 12.40 PM\n" +
-                        "• Afternoon Lab Slot: 1.15 PM - 3.15 PM\n\n" +
-                        "Selected period timing will be updated immediately in Faculty Dashboard."
-                      );
-                    }}
-                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Analyze Image Periods</span>
-                  </button>
-                  <label className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm">
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>{timetableImagePreview ? 'Upload New Image' : 'Upload Timetable Image'}</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
+            {!timetableSectionId ? (
+              <p className="text-xs text-slate-400 italic bg-slate-50 p-6 rounded-2xl border border-slate-200/60 text-center">
+                Please select a Batch and Section above to configure and upload the subject timetable.
+              </p>
+            ) : (
+              <>
+                {/* Subject Tag & Period Selection Controls */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <div>
+                    <label className="text-[10px] font-black text-indigo-650 uppercase tracking-wide block mb-1">
+                      Select Lab Name to Analyze
+                    </label>
+                    <select
+                      value={selectedSubjectShortForm}
                       onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        if (file.size > 12 * 1024 * 1024) {
-                          alert("Image size must be under 12MB");
-                          return;
-                        }
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          const base64 = reader.result as string;
-                          setTimetableImagePreview(base64);
-
-                          const sf = selectedSubjectShortForm || getSubjectShortForm(timetableModalFaculty.subjectName || timetableModalFaculty.subject, timetableModalFaculty.subjectShortForm, timetableModalFaculty.subjectCode);
-                          const sfUpper = (sf || 'KIES').toUpperCase();
-
-                          const daysShort = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-                          const currentDayCode = daysShort[new Date().getDay()];
-
-                          const PANIMALAR_AUTO_ANALYSIS: Record<string, { labDay: string; labPeriod: string; theory: Record<string, string> }> = {
-                            KIES: {
-                              labDay: 'FRI',
-                              labPeriod: 'Period 2 & 3 Morning Lab Slot (8.50 AM - 10.30 AM)',
-                              theory: { MON: 'Period 6 (1.15 PM - 1.55 PM)', TUE: 'Period 2 (8.50 AM - 9.40 AM)', WED: 'Period 2 (8.50 AM - 9.40 AM)', THU: 'Period 3 (9.40 AM - 10.30 AM)', FRI: 'Period 6 (1.15 PM - 1.55 PM)' }
-                            },
-                            DA: {
-                              labDay: 'TUE',
-                              labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
-                              theory: { TUE: 'Period 1 (8.00 AM - 8.50 AM) & Period 7 (1.55 PM - 2.35 PM)', WED: 'Period 3 (9.40 AM - 10.30 AM)', FRI: 'Period 7 (1.55 PM - 2.35 PM)' }
-                            },
-                            DEV: {
-                              labDay: 'THU',
-                              labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
-                              theory: { WED: 'Period 1 (8.00 AM - 8.50 AM)', THU: 'Period 2 (8.50 AM - 9.40 AM)', FRI: 'Period 8 (2.35 PM - 3.15 PM)' }
-                            },
-                            TSP: {
-                              labDay: 'MON',
-                              labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
-                              theory: {}
-                            }
-                          };
-
-                          const autoData = PANIMALAR_AUTO_ANALYSIS[sfUpper] || PANIMALAR_AUTO_ANALYSIS['KIES'];
-                          const autoPeriod = (currentDayCode === autoData.labDay) ? autoData.labPeriod : (autoData.theory[currentDayCode] || 'Period 1 (8.00 AM - 8.50 AM)');
-
-                          setSelectedTimetablePeriod(autoPeriod);
-
-                          const payload = JSON.stringify({
-                            image: base64,
-                            subjectShortForm: sfUpper,
-                            period: autoPeriod,
-                            subjectName: timetableModalFaculty.subjectName || timetableModalFaculty.subject,
-                            subjectCode: timetableModalFaculty.subjectCode,
-                            analyzedAt: new Date().toISOString(),
-                            updatedAt: new Date().toISOString()
-                          });
-
-                          localStorage.setItem(`faculty_timetable_${timetableModalFaculty.id}`, payload);
-                          localStorage.setItem(`faculty_timetable_${timetableModalFaculty.email}`, payload);
-
-                          window.dispatchEvent(new Event('storage'));
-                          window.dispatchEvent(new CustomEvent('timetableUpdated', { detail: { facultyId: timetableModalFaculty.id } }));
-
-                          alert(`✨ Timetable Image Uploaded & Automatically Analyzed!\n\nSubject Short Form: ${sfUpper}\nFetched Period Timing: ${autoPeriod}\n\nThis timetable is now synced real-time to the Faculty Dashboard.`);
+                        const sf = e.target.value;
+                        setSelectedSubjectShortForm(sf);
+                        
+                        const PANIMALAR_AUTO_ANALYSIS_SLOTS: Record<string, { labPeriod: string }> = {
+                          KIES: { labPeriod: 'Period 2 & 3 Morning Lab Slot (8.50 AM - 10.30 AM)' },
+                          DA: { labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)' },
+                          DEV: { labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)' },
+                          TSP: { labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)' }
                         };
-                        reader.readAsDataURL(file);
+                        const auto = PANIMALAR_AUTO_ANALYSIS_SLOTS[sf.toUpperCase()] || PANIMALAR_AUTO_ANALYSIS_SLOTS['KIES'];
+                        setSelectedTimetablePeriod(auto.labPeriod);
                       }}
-                    />
-                  </label>
-                </div>
-              </div>
-
-              {timetableImagePreview ? (
-                <div className="space-y-3">
-                  <div className="bg-slate-900/95 p-3 rounded-2xl border border-slate-800 flex justify-center items-center overflow-hidden max-h-[500px] shadow-lg">
-                    <img 
-                      src={timetableImagePreview} 
-                      alt="Faculty Timetable" 
-                      className="max-h-[480px] w-auto object-contain rounded-xl shadow-md"
-                    />
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-emerald-600 font-bold flex items-center gap-1">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <span>Timetable image currently active for this faculty</span>
-                    </span>
-                    <button
-                      onClick={() => {
-                        if (confirm("Remove timetable image for this faculty member?")) {
-                          setTimetableImagePreview(null);
-                          localStorage.removeItem(`faculty_timetable_${timetableModalFaculty.id}`);
-                          localStorage.removeItem(`faculty_timetable_${timetableModalFaculty.email}`);
-                        }
-                      }}
-                      className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 rounded-xl font-bold transition cursor-pointer border border-rose-200"
+                      className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-black text-indigo-950 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer shadow-xs"
                     >
-                      Remove Image
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <label className="border-2 border-dashed border-slate-300 hover:border-indigo-500 rounded-3xl p-10 flex flex-col items-center justify-center text-center cursor-pointer transition hover:bg-indigo-50/20 space-y-3">
-                  <div className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100">
-                    <Calendar className="w-8 h-8" />
+                      <option value="KIES">KIES LAB (Knowledge Engineering & Intelligent Systems)</option>
+                      <option value="DA">DA LAB (Data Analytics)</option>
+                      <option value="DEV">DEV LAB (Web Development)</option>
+                      <option value="TSP">TSP LAB (Technical Seminar & Research Writing / Practical)</option>
+                    </select>
                   </div>
                   <div>
-                    <p className="font-extrabold text-slate-800 text-sm">Click or Drag & Drop Timetable Image Here</p>
-                    <p className="text-xs text-slate-400 font-medium mt-1">PNG, JPG, WEBP formats supported (Max 12MB)</p>
+                    <label className="text-[10px] font-black text-slate-600 uppercase tracking-wide block mb-1">
+                      Select Timetable Period / Session Timings
+                    </label>
+                    <select
+                      value={selectedTimetablePeriod}
+                      onChange={(e) => {
+                        const newPeriod = e.target.value;
+                        setSelectedTimetablePeriod(newPeriod);
+                        if (timetableImagePreview && timetableModalFaculty) {
+                          const sf = selectedSubjectShortForm || getSubjectShortForm(timetableModalFaculty.subjectName || timetableModalFaculty.subject, timetableModalFaculty.subjectShortForm, timetableModalFaculty.subjectCode);
+                          const payload = JSON.stringify({
+                            image: timetableImagePreview,
+                            subjectShortForm: sf,
+                            period: newPeriod,
+                            subjectName: timetableModalFaculty.subjectName || timetableModalFaculty.subject,
+                            subjectCode: timetableModalFaculty.subjectCode,
+                            updatedAt: new Date().toISOString()
+                          });
+                          const keySuffix = timetableSectionId ? `_${timetableSectionId}` : '';
+                          localStorage.setItem(`faculty_timetable_${timetableModalFaculty.id}${keySuffix}`, payload);
+                          localStorage.setItem(`faculty_timetable_${timetableModalFaculty.email}${keySuffix}`, payload);
+                        }
+                      }}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
+                    >
+                      {(() => {
+                        const activeSf = (selectedSubjectShortForm || getSubjectShortForm(timetableModalFaculty?.subjectName || timetableModalFaculty?.subject, timetableModalFaculty?.subjectShortForm, timetableModalFaculty?.subjectCode) || 'KIES').toUpperCase();
+                        
+                        if (activeSf.includes('KIES') || activeSf.includes('EASY')) {
+                          return (
+                            <>
+                              <option value="Period 2 & 3 Morning Lab Slot (8.50 AM - 10.30 AM)">Period 2 & 3 Morning Lab Slot (8.50 AM – 10.30 AM)</option>
+                              <option value="Monday - Period 6 (1.15 PM - 1.55 PM)">Monday - Period 6 (1.15 PM – 1.55 PM)</option>
+                              <option value="Tuesday - Period 2 (8.50 AM - 9.40 AM)">Tuesday - Period 2 (8.50 AM – 9.40 AM)</option>
+                              <option value="Wednesday - Period 2 (8.50 AM - 9.40 AM)">Wednesday - Period 2 (8.50 AM – 9.40 AM)</option>
+                              <option value="Thursday - Period 3 (9.40 AM - 10.30 AM)">Thursday - Period 3 (9.40 AM – 10.30 AM)</option>
+                              <option value="Friday - Period 6 (1.15 PM - 1.55 PM)">Friday - Period 6 (1.15 PM – 1.55 PM)</option>
+                            </>
+                          );
+                        }
+                        if (activeSf.includes('DA') || activeSf.includes('DATA') || activeSf.includes('ANALYT')) {
+                          return (
+                            <>
+                              <option value="Morning Lab Slot (10.45 AM - 12.40 PM)">Period 4 & 5 Morning Lab Slot (10.45 AM – 12.40 PM)</option>
+                              <option value="Tuesday - Period 1 (8.00 AM - 8.50 AM)">Tuesday - Period 1 (8.00 AM – 8.50 AM)</option>
+                              <option value="Tuesday - Period 7 (1.55 PM - 2.35 PM)">Tuesday - Period 7 (1.55 PM – 2.35 PM)</option>
+                              <option value="Wednesday - Period 3 (9.40 AM - 10.30 AM)">Wednesday - Period 3 (9.40 AM – 10.30 AM)</option>
+                              <option value="Wednesday - Period 4 (10.45 AM - 11.40 AM)">Wednesday - Period 4 (10.45 AM – 11.40 AM)</option>
+                              <option value="Friday - Period 7 (1.55 PM - 2.35 PM)">Friday - Period 7 (1.55 PM – 2.35 PM)</option>
+                            </>
+                          );
+                        }
+                        if (activeSf.includes('DEV') || activeSf.includes('DEVELOP')) {
+                          return (
+                            <>
+                              <option value="Morning Lab Slot (10.45 AM - 12.40 PM)">Period 4 & 5 Morning Lab Slot (10.45 AM – 12.40 PM)</option>
+                              <option value="Wednesday - Period 1 (8.00 AM - 8.50 AM)">Wednesday - Period 1 (8.00 AM – 8.50 AM)</option>
+                              <option value="Wednesday - Period 8 (2.35 PM - 3.15 PM)">Wednesday - Period 8 (2.35 PM – 3.15 PM)</option>
+                              <option value="Thursday - Period 2 (8.50 AM - 9.40 AM)">Thursday - Period 2 (8.50 AM – 9.40 AM)</option>
+                              <option value="Friday - Period 8 (2.35 PM - 3.15 PM)">Friday - Period 8 (2.35 PM – 3.15 PM)</option>
+                            </>
+                          );
+                        }
+                        if (activeSf.includes('TSP')) {
+                          return (
+                            <>
+                              <option value="Morning Lab Slot (10.45 AM - 12.40 PM)">Period 4 & 5 Morning Lab Slot (10.45 AM – 12.40 PM)</option>
+                            </>
+                          );
+                        }
+                        
+                        return (
+                          <>
+                            <option value="Period 1 (8.00 AM - 8.50 AM)">Period 1 (8.00 AM – 8.50 AM)</option>
+                            <option value="Period 2 (8.50 AM - 9.40 AM)">Period 2 (8.50 AM – 9.40 AM)</option>
+                            <option value="Period 3 (9.40 AM - 10.30 AM)">Period 3 (9.40 AM – 10.30 AM)</option>
+                            <option value="Tea Break (10.30 AM - 10.45 AM)">Tea Break (10.30 AM – 10.45 AM)</option>
+                            <option value="Period 4 (10.45 AM - 11.40 AM)">Period 4 (10.45 AM – 11.40 AM)</option>
+                            <option value="Period 5 (11.40 AM - 12.40 PM)">Period 5 (11.40 AM – 12.40 PM)</option>
+                            <option value="Morning Lab Slot (10.45 AM - 12.40 PM)">Morning Lab Slot (10.45 AM – 12.40 PM)</option>
+                            <option value="Lunch Break (12.40 PM - 1.15 PM)">Lunch Break (12.40 PM – 1.15 PM)</option>
+                            <option value="Period 6 (1.15 PM - 1.55 PM)">Period 6 (1.15 PM – 1.55 PM)</option>
+                            <option value="Period 7 (1.55 PM - 2.35 PM)">Period 7 (1.55 PM – 2.35 PM)</option>
+                            <option value="Period 8 (2.35 PM - 3.15 PM)">Period 8 (2.35 PM – 3.15 PM)</option>
+                            <option value="Afternoon Lab Slot (1.15 PM - 3.15 PM)">Afternoon Lab Slot (1.15 PM – 3.15 PM)</option>
+                            <option value="Full Day Session (8.00 AM - 3.15 PM)">Full Day Session (8.00 AM – 3.15 PM)</option>
+                          </>
+                        );
+                      })()}
+                    </select>
                   </div>
-                  <span className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-extrabold text-xs shadow-sm">
-                    Select Timetable Image File
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      if (file.size > 12 * 1024 * 1024) {
-                        alert("Image size must be under 12MB");
-                        return;
-                      }
-                      const reader = new FileReader();
-                      reader.onloadend = () => {
-                        const base64 = reader.result as string;
-                        setTimetableImagePreview(base64);
-                        localStorage.setItem(`faculty_timetable_${timetableModalFaculty.id}`, base64);
-                        localStorage.setItem(`faculty_timetable_${timetableModalFaculty.email}`, base64);
-                        alert(`Timetable image assigned successfully for ${timetableModalFaculty.name || 'Faculty'}!`);
-                      };
-                      reader.readAsDataURL(file);
-                    }}
-                  />
-                </label>
-              )}
-            </div>
+                </div>
+
+                {/* Upload & Preview Section */}
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider">Handling Subject Timetable Schedule Image</h4>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!timetableImagePreview) {
+                            alert("Please upload a timetable image first to analyze it!");
+                            return;
+                          }
+                          const sf = selectedSubjectShortForm || getSubjectShortForm(timetableModalFaculty.subjectName || timetableModalFaculty.subject, timetableModalFaculty.subjectShortForm, timetableModalFaculty.subjectCode);
+                          const sfUpper = (sf || 'KIES').toUpperCase();
+                          saveAnalyzedTimetableToProfile(timetableModalFaculty, sfUpper);
+                          
+                          const PANIMALAR_AUTO_ANALYSIS_SLOTS: Record<string, { labDayName: string; labPeriod: string; labTime: string }> = {
+                            KIES: { labDayName: 'Friday', labPeriod: 'Period 2 & 3 Morning Lab Slot', labTime: '8.50 AM - 10.30 AM' },
+                            DA: { labDayName: 'Tuesday', labPeriod: 'Morning Lab Slot', labTime: '10.45 AM - 12.40 PM' },
+                            DEV: { labDayName: 'Thursday', labPeriod: 'Morning Lab Slot', labTime: '10.45 AM - 12.40 PM' },
+                            TSP: { labDayName: 'Monday', labPeriod: 'Morning Lab Slot', labTime: '10.45 AM - 12.40 PM' }
+                          };
+                          const auto = PANIMALAR_AUTO_ANALYSIS_SLOTS[sfUpper] || PANIMALAR_AUTO_ANALYSIS_SLOTS['KIES'];
+
+                          alert(
+                            "✨ Panimalar Engineering College Timetable Analyzed!\n\n" +
+                            "Detected Lab details saved to Faculty profile:\n" +
+                            "• Associated Lab Name: " + sfUpper + " LAB\n" +
+                            "• Analyzed Day: " + auto.labDayName + "\n" +
+                            "• Period/Time Slot: " + auto.labPeriod + " (" + auto.labTime + ")\n" +
+                            "• Calibration Date & Time: " + new Date().toLocaleString('en-GB') + "\n\n" +
+                            "Laboratory details will now reflect in HOD monitors and Faculty dashboard."
+                          );
+                        }}
+                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Analyze Image Periods</span>
+                      </button>
+                      <label className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>{timetableImagePreview ? 'Upload New Image' : 'Upload Timetable Image'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            if (file.size > 12 * 1024 * 1024) {
+                              alert("Image size must be under 12MB");
+                              return;
+                            }
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              const base64 = reader.result as string;
+                              setTimetableImagePreview(base64);
+
+                              const sf = selectedSubjectShortForm || getSubjectShortForm(timetableModalFaculty.subjectName || timetableModalFaculty.subject, timetableModalFaculty.subjectShortForm, timetableModalFaculty.subjectCode);
+                              const sfUpper = (sf || 'KIES').toUpperCase();
+
+                              const daysShort = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+                              const currentDayCode = daysShort[new Date().getDay()];
+
+                              const PANIMALAR_AUTO_ANALYSIS: Record<string, { labDay: string; labPeriod: string; theory: Record<string, string> }> = {
+                                KIES: {
+                                  labDay: 'FRI',
+                                  labPeriod: 'Period 2 & 3 Morning Lab Slot (8.50 AM - 10.30 AM)',
+                                  theory: { MON: 'Period 6 (1.15 PM - 1.55 PM)', TUE: 'Period 2 (8.50 AM - 9.40 AM)', WED: 'Period 2 (8.50 AM - 9.40 AM)', THU: 'Period 3 (9.40 AM - 10.30 AM)', FRI: 'Period 6 (1.15 PM - 1.55 PM)' }
+                                },
+                                DA: {
+                                  labDay: 'TUE',
+                                  labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
+                                  theory: { TUE: 'Period 1 (8.00 AM - 8.50 AM) & Period 7 (1.55 PM - 2.35 PM)', WED: 'Period 3 (9.40 AM - 10.30 AM)', FRI: 'Period 7 (1.55 PM - 2.35 PM)' }
+                                },
+                                DEV: {
+                                  labDay: 'THU',
+                                  labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
+                                  theory: { WED: 'Period 1 (8.00 AM - 8.50 AM)', THU: 'Period 2 (8.50 AM - 9.40 AM)', FRI: 'Period 8 (2.35 PM - 3.15 PM)' }
+                                },
+                                TSP: {
+                                  labDay: 'MON',
+                                  labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)',
+                                  theory: {}
+                                }
+                              };
+
+                              const autoData = PANIMALAR_AUTO_ANALYSIS[sfUpper] || PANIMALAR_AUTO_ANALYSIS['KIES'];
+                              const autoPeriod = (currentDayCode === autoData.labDay) ? autoData.labPeriod : (autoData.theory[currentDayCode] || 'Period 1 (8.00 AM - 8.50 AM)');
+
+                              setSelectedTimetablePeriod(autoPeriod);
+
+                              const payload = JSON.stringify({
+                                image: base64,
+                                subjectShortForm: sfUpper,
+                                period: autoPeriod,
+                                subjectName: timetableModalFaculty.subjectName || timetableModalFaculty.subject,
+                                subjectCode: timetableModalFaculty.subjectCode,
+                                analyzedAt: new Date().toISOString(),
+                                updatedAt: new Date().toISOString()
+                              });
+
+                              const keySuffix = timetableSectionId ? `_${timetableSectionId}` : '';
+                              localStorage.setItem(`faculty_timetable_${timetableModalFaculty.id}${keySuffix}`, payload);
+                              localStorage.setItem(`faculty_timetable_${timetableModalFaculty.email}${keySuffix}`, payload);
+
+                              saveAnalyzedTimetableToProfile(timetableModalFaculty, sfUpper);
+
+                              window.dispatchEvent(new Event('storage'));
+                              window.dispatchEvent(new CustomEvent('timetableUpdated', { detail: { facultyId: timetableModalFaculty.id } }));
+
+                              alert(`✨ Timetable Image Uploaded & Automatically Analyzed!\n\nSubject Short Form: ${sfUpper}\nFetched Period Timing: ${autoPeriod}\n\nThis timetable is now synced real-time to the Faculty Profile & Dashboard.`);
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {timetableImagePreview ? (
+                    <div className="space-y-3">
+                      <div className="bg-slate-900/95 p-3 rounded-2xl border border-slate-800 flex justify-center items-center overflow-hidden max-h-[500px] shadow-lg">
+                        <img 
+                          src={timetableImagePreview} 
+                          alt="Faculty Timetable" 
+                          className="max-h-[480px] w-auto object-contain rounded-xl shadow-md"
+                        />
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-emerald-600 font-bold flex items-center gap-1">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          <span>Timetable image currently active for this faculty</span>
+                        </span>
+                        <button
+                          onClick={() => {
+                            if (confirm("Remove timetable image for this faculty member?")) {
+                              setTimetableImagePreview(null);
+                              const keySuffix = timetableSectionId ? `_${timetableSectionId}` : '';
+                              localStorage.removeItem(`faculty_timetable_${timetableModalFaculty.id}${keySuffix}`);
+                              localStorage.removeItem(`faculty_timetable_${timetableModalFaculty.email}${keySuffix}`);
+                            }
+                          }}
+                          className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 rounded-xl font-bold transition cursor-pointer border border-rose-200"
+                        >
+                          Remove Image
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="border-2 border-dashed border-slate-300 hover:border-indigo-500 rounded-3xl p-10 flex flex-col items-center justify-center text-center cursor-pointer transition hover:bg-indigo-50/20 space-y-3">
+                      <div className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100">
+                        <Calendar className="w-8 h-8" />
+                      </div>
+                      <div>
+                        <p className="font-extrabold text-slate-800 text-sm">Click or Drag & Drop Timetable Image Here</p>
+                        <p className="text-xs text-slate-400 font-medium mt-1">PNG, JPG, WEBP formats supported (Max 12MB)</p>
+                      </div>
+                      <span className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-extrabold text-xs shadow-sm">
+                        Select Timetable Image File
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 12 * 1024 * 1024) {
+                            alert("Image size must be under 12MB");
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            const base64 = reader.result as string;
+                            setTimetableImagePreview(base64);
+                            const keySuffix = timetableSectionId ? `_${timetableSectionId}` : '';
+                            localStorage.setItem(`faculty_timetable_${timetableModalFaculty.id}${keySuffix}`, base64);
+                            localStorage.setItem(`faculty_timetable_${timetableModalFaculty.email}${keySuffix}`, base64);
+                            alert(`Timetable image assigned successfully for ${timetableModalFaculty.name || 'Faculty'}!`);
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </Modal>
       )}
@@ -2618,14 +3437,63 @@ function MonitoringTab({ faculties, students, sections, batches, token, onRefres
   faculties: any[]; students: any[]; sections: any[]; batches: any[]; token: string;
   onRefresh: () => Promise<void>;
 }) {
-  const [tab, setTab] = useState<'faculty' | 'student'>('faculty');
+  const [tab, setTab] = useState<'faculty' | 'student' | 'dayreport'>('faculty');
   const [facultySearch, setFacultySearch] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
   const [selectedSectionFilter, setSelectedSectionFilter] = useState<string>('');
+  const [monitoringBatchFilter, setMonitoringBatchFilter] = useState<string>('');
+  const [monitoringSectionFilter, setMonitoringSectionFilter] = useState<string>('');
   const [monitoringModal, setMonitoringModal] = useState<any | null>(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [isLive, setIsLive] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Day-by-Day Reports state
+  const [reportDate, setReportDate] = useState<string>(() => getLocalDateString());
+  const [reportViewTab, setReportViewTab] = useState<'attendance' | 'evaluations'>('evaluations');
+  const [reportSearchQuery, setReportSearchQuery] = useState<string>('');
+
+  const [exportSelectModalFaculty, setExportSelectModalFaculty] = useState<any | null>(null);
+  const [selectedExportBatchId, setSelectedExportBatchId] = useState<string>('');
+  const [selectedExportSectionId, setSelectedExportSectionId] = useState<string>('');
+
+  // Find batches assigned to this faculty member for export modal
+  const getFacultyBatchesForExport = (fac: any) => {
+    if (!fac) return [];
+    const batchIds = new Set<string>();
+    const mappings = fac.assignedSectionMappings || [];
+    mappings.forEach((m: any) => {
+      const sec = sections.find(s => s.id === m.sectionId);
+      if (sec && sec.batchId) batchIds.add(sec.batchId);
+    });
+    const sIds = fac.assignedSectionIds || (fac.sectionId ? [fac.sectionId] : []);
+    sIds.forEach((sid: string) => {
+      const sec = sections.find(s => s.id === sid);
+      if (sec && sec.batchId) batchIds.add(sec.batchId);
+    });
+    if (fac.batchId) batchIds.add(fac.batchId);
+    
+    if (batchIds.size === 0) return batches;
+    return batches.filter(b => batchIds.has(b.id));
+  };
+
+  // Find sections assigned to this faculty member for the selected batch in export modal
+  const getFacultySectionsForExport = (fac: any, targetBatchId: string) => {
+    if (!fac) return [];
+    const mappings = fac.assignedSectionMappings || [];
+    const assignedSectionIds = new Set<string>(mappings.map((m: any) => m.sectionId));
+    const sIds = fac.assignedSectionIds || (fac.sectionId ? [fac.sectionId] : []);
+    sIds.forEach((sid: string) => assignedSectionIds.add(sid));
+    
+    let filtered = sections;
+    if (assignedSectionIds.size > 0) {
+      filtered = sections.filter(s => assignedSectionIds.has(s.id));
+    }
+    if (targetBatchId) {
+      filtered = filtered.filter(s => s.batchId === targetBatchId);
+    }
+    return filtered;
+  };
 
   // Auto-refresh every 30 seconds when live
   useEffect(() => {
@@ -2654,6 +3522,22 @@ function MonitoringTab({ faculties, students, sections, batches, token, onRefres
 
   // ── Faculty filter ────────────────────────────────────────────────────────
   const filteredFaculties = faculties.filter(f => {
+    if (monitoringBatchFilter) {
+      const batchSecIds = sections.filter(s => s.batchId === monitoringBatchFilter).map(s => s.id);
+      const hasBatchMapping = f.assignedSectionMappings?.some((m: any) => batchSecIds.includes(m.sectionId)) || 
+                              f.assignedSectionIds?.some((sid: string) => batchSecIds.includes(sid)) ||
+                              batchSecIds.includes(f.sectionId) ||
+                              f.batchId === monitoringBatchFilter;
+      if (!hasBatchMapping) return false;
+    }
+
+    if (monitoringSectionFilter) {
+      const hasSectionMapping = f.assignedSectionMappings?.some((m: any) => m.sectionId === monitoringSectionFilter) ||
+                                f.assignedSectionIds?.includes(monitoringSectionFilter) ||
+                                f.sectionId === monitoringSectionFilter;
+      if (!hasSectionMapping) return false;
+    }
+
     const q = facultySearch.toLowerCase();
     return !q ||
       (f.name || '').toLowerCase().includes(q) ||
@@ -2672,6 +3556,20 @@ function MonitoringTab({ faculties, students, sections, batches, token, onRefres
 
   // ── Student filter ────────────────────────────────────────────────────────
   const filteredStudents = students.filter((s: any) => {
+    if (monitoringBatchFilter) {
+      const batObj = batches.find(b => b.id === monitoringBatchFilter);
+      const isMatch = s.batchId === monitoringBatchFilter || 
+                      (batObj && (s.batch === batObj.year || s.batch === batObj.name));
+      if (!isMatch) return false;
+    }
+
+    if (monitoringSectionFilter) {
+      const secObj = sections.find(sec => sec.id === monitoringSectionFilter);
+      const isMatch = s.sectionId === monitoringSectionFilter ||
+                      (secObj && s.section?.toLowerCase() === secObj.name?.toLowerCase());
+      if (!isMatch) return false;
+    }
+
     if (selectedSectionFilter) {
       const sSec = String(s.section || s.sectionName || s.sectionId || '').toLowerCase();
       const targetSec = selectedSectionFilter.toLowerCase();
@@ -2688,6 +3586,77 @@ function MonitoringTab({ faculties, students, sections, batches, token, onRefres
       (s.batch || s.batchName || '').toLowerCase().includes(q);
   });
 
+  // ── Day-by-Day Report Data Calculation ──────────────────────────────────
+  const dayReportStudents = filteredStudents;
+  const dailyAttendanceListRaw = dayReportStudents.map((student: any) => {
+    const dateRecords = (student.attendanceHistory || []).filter((h: any) => h.date === reportDate);
+    const myRecord = dateRecords.length > 0 ? dateRecords[dateRecords.length - 1] : null;
+
+    const obsEvaluatedOnDateRaw = (student.experiments || []).filter((e: any) => {
+      const dateMatches = e.submittedAt === reportDate || (e.dueDate === reportDate && (e.status === 'Approved' || e.status === 'Absent' || (e.score !== undefined && e.score !== 0)));
+      return dateMatches || (e.score !== undefined && e.score !== null && e.score !== 0 && e.score !== '');
+    });
+
+    const uniqueObsOnDateMap = new Map<number, any>();
+    obsEvaluatedOnDateRaw.forEach((e: any) => {
+      const expNum = e.experimentNumber || Number(e.id?.split('-').pop()) || 1;
+      if (!uniqueObsOnDateMap.has(expNum)) {
+        uniqueObsOnDateMap.set(expNum, e);
+      }
+    });
+    const uniqueObsList = Array.from(uniqueObsOnDateMap.values());
+
+    const recEvaluatedOnDateRaw = (student.assignments || []).filter((a: any) => {
+      const dateMatches = a.submittedAt === reportDate || (a.dueDate === reportDate && a.status === 'Graded');
+      return dateMatches || a.status === 'Graded' || a.status === 'Submitted';
+    });
+
+    const uniqueRecOnDateMap = new Map<number, any>();
+    recEvaluatedOnDateRaw.forEach((a: any) => {
+      const expNum = a.experimentNumber || Number(a.id?.split('-').pop()) || 1;
+      if (!uniqueRecOnDateMap.has(expNum)) {
+        uniqueRecOnDateMap.set(expNum, a);
+      }
+    });
+    const uniqueRecList = Array.from(uniqueRecOnDateMap.values());
+
+    const obsItems = uniqueObsList.map((e: any) => ({
+      expNum: e.experimentNumber || e.id?.split('-').pop() || 1,
+      score: e.score !== undefined && e.score !== null && e.score !== '' ? e.score : (e.status === 'Approved' ? '10' : e.status)
+    }));
+
+    const recItems = uniqueRecList.map((a: any) => ({
+      expNum: a.experimentNumber || a.id?.split('-').pop() || 1,
+      status: a.status === 'Graded' ? 'Signed' : a.status
+    }));
+
+    const obsStatusText = obsItems.length > 0 ? obsItems.map((i: any) => `Exp ${i.expNum}: ${i.score}`).join(', ') : '-';
+    const recStatusText = recItems.length > 0 ? recItems.map((i: any) => `Exp ${i.expNum}: ${i.status}`).join(', ') : '-';
+
+    return {
+      student,
+      rawStatus: myRecord ? (myRecord.status as string) : 'Present',
+      obsStatusText,
+      recStatusText,
+      obsItems,
+      recItems,
+    };
+  });
+
+  const filteredDayReportList = dailyAttendanceListRaw.filter((item: any) => {
+    if (!reportSearchQuery.trim()) return true;
+    const q = reportSearchQuery.toLowerCase();
+    return (item.student.name || '').toLowerCase().includes(q) ||
+      (item.student.rollNo || '').toLowerCase().includes(q) ||
+      (item.student.registerNo || '').toLowerCase().includes(q);
+  });
+
+  const dayPresentCount = dailyAttendanceListRaw.filter((d: any) => d.rawStatus === 'Present').length;
+  const dayAbsentCount = dailyAttendanceListRaw.filter((d: any) => d.rawStatus === 'Absent').length;
+  const dayODCount = dailyAttendanceListRaw.filter((d: any) => d.rawStatus === 'On Duty').length;
+  const dayTotalCount = dailyAttendanceListRaw.length;
+  const dayAttendancePct = dayTotalCount > 0 ? Math.round((dayPresentCount / dayTotalCount) * 100) : 0;
+
   const getAttColor = (att: number) => {
     if (att >= 75) return { bg: 'bg-emerald-50', text: 'text-emerald-700', bar: 'bg-emerald-500', badge: 'green' as const };
     if (att >= 60) return { bg: 'bg-amber-50',   text: 'text-amber-700',   bar: 'bg-amber-400',   badge: 'amber' as const };
@@ -2703,8 +3672,96 @@ function MonitoringTab({ faculties, students, sections, batches, token, onRefres
         <FacultyMonitoringModal
           faculty={monitoringModal}
           token={token}
+          batches={batches}
+          sections={sections}
           onClose={() => setMonitoringModal(null)}
         />
+      )}
+
+      {exportSelectModalFaculty && (
+        <Modal
+          title={`Export Observation Marks — ${exportSelectModalFaculty.name || exportSelectModalFaculty.email}`}
+          onClose={() => {
+            setExportSelectModalFaculty(null);
+            setSelectedExportBatchId('');
+            setSelectedExportSectionId('');
+          }}
+        >
+          <div className="space-y-4 p-4 text-xs font-semibold text-slate-700">
+            <p className="text-xs text-slate-500 font-medium">
+              Please select the Batch and Section you wish to export for <strong>{exportSelectModalFaculty.name || exportSelectModalFaculty.email}</strong>.
+            </p>
+            
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider">Select Batch</label>
+              <select
+                value={selectedExportBatchId}
+                onChange={e => {
+                  setSelectedExportBatchId(e.target.value);
+                  setSelectedExportSectionId('');
+                }}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
+              >
+                <option value="">— Choose Batch —</option>
+                {getFacultyBatchesForExport(exportSelectModalFaculty).map((b: any) => (
+                  <option key={b.id} value={b.id}>{b.name} ({b.year})</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider">Select Section</label>
+              <select
+                value={selectedExportSectionId}
+                onChange={e => setSelectedExportSectionId(e.target.value)}
+                disabled={!selectedExportBatchId}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer disabled:opacity-50"
+              >
+                <option value="">— Choose Section —</option>
+                {getFacultySectionsForExport(exportSelectModalFaculty, selectedExportBatchId).map((s: any) => (
+                  <option key={s.id} value={s.id}>Section {s.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4">
+              <button
+                onClick={() => {
+                  setExportSelectModalFaculty(null);
+                  setSelectedExportBatchId('');
+                  setSelectedExportSectionId('');
+                }}
+                className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold transition hover:bg-slate-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (!selectedExportBatchId || !selectedExportSectionId) {
+                    alert("Please select both Batch and Section.");
+                    return;
+                  }
+                  exportFacultyObservationMarksExcel(
+                    exportSelectModalFaculty,
+                    students,
+                    selectedExportBatchId,
+                    selectedExportSectionId,
+                    sections,
+                    batches
+                  );
+                  setExportSelectModalFaculty(null);
+                  setSelectedExportBatchId('');
+                  setSelectedExportSectionId('');
+                }}
+                disabled={!selectedExportBatchId || !selectedExportSectionId}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export Excel</span>
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {/* ── Live Status Bar ──────────────────────────────────────────────────── */}
@@ -2783,6 +3840,7 @@ function MonitoringTab({ faculties, students, sections, batches, token, onRefres
           {([
             { key: 'faculty', label: 'Faculty Monitoring', icon: UserCheck,    count: filteredFaculties.length },
             { key: 'student', label: 'Student Monitoring', icon: GraduationCap, count: filteredStudents.length },
+            { key: 'dayreport', label: 'Day-by-Day Reports', icon: CalendarDays, count: filteredDayReportList.length },
           ] as const).map(({ key, label, icon: Icon, count }) => (
             <button
               key={key}
@@ -2800,6 +3858,47 @@ function MonitoringTab({ faculties, students, sections, batches, token, onRefres
               }`}>{count}</span>
             </button>
           ))}
+        </div>
+
+        {/* Batch & Section Dropdown Filters */}
+        <div className="p-4 border-b border-slate-100 bg-slate-50/50 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Select Batch</label>
+            <select
+              value={monitoringBatchFilter}
+              onChange={e => {
+                setMonitoringBatchFilter(e.target.value);
+                setMonitoringSectionFilter('');
+              }}
+              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
+            >
+              <option value="">— All Batches —</option>
+              {batches.map(b => (
+                <option key={b.id} value={b.id}>{b.name} ({b.year})</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Select Section</label>
+            <select
+              value={monitoringSectionFilter}
+              onChange={e => setMonitoringSectionFilter(e.target.value)}
+              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
+            >
+              <option value="">— All Sections —</option>
+              {sections
+                .filter(s => !monitoringBatchFilter || s.batchId === monitoringBatchFilter)
+                .map(s => {
+                  const bat = batches.find(b => b.id === s.batchId);
+                  return (
+                    <option key={s.id} value={s.id}>
+                      Section {s.name} {bat ? `(${bat.name})` : ''}
+                    </option>
+                  );
+                })}
+            </select>
+          </div>
         </div>
 
         {/* ── FACULTY MONITORING ───────────────────────────────────────────── */}
@@ -2828,8 +3927,6 @@ function MonitoringTab({ faculties, students, sections, batches, token, onRefres
                         <th className="px-4 py-3.5 text-center">S.No</th>
                         <th className="px-4 py-3.5">Faculty Name</th>
                         <th className="px-4 py-3.5">Department</th>
-                        <th className="px-4 py-3.5">Subject</th>
-                        <th className="px-4 py-3.5">Lab Room</th>
                         <th className="px-4 py-3.5 text-center">Assigned Section</th>
                         <th className="px-4 py-3.5 text-center">Students</th>
                         <th className="px-4 py-3.5 text-center">Status</th>
@@ -2839,15 +3936,45 @@ function MonitoringTab({ faculties, students, sections, batches, token, onRefres
                     <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
                       {filteredFaculties.map((f, idx) => {
                         const sectionObj = f.sectionId ? sections.find((s: any) => s.id === f.sectionId) : null;
-                        const assignedSectionNames = [
-                          sectionObj?.name,
-                          f.section,
-                          f.sections,
-                          ...(Array.isArray(f.assignedSectionIds) ? f.assignedSectionIds.map((sid: string) => sections.find((s: any) => s.id === sid)?.name || sid) : [])
-                        ].filter(Boolean);
-
-                        const sectionNameDisplay = assignedSectionNames.length > 0
-                          ? Array.from(new Set(assignedSectionNames)).join(", ")
+                        const sectionLabels: string[] = [];
+                        if (Array.isArray(f.assignedSectionMappings) && f.assignedSectionMappings.length > 0) {
+                          f.assignedSectionMappings.forEach((m: any) => {
+                            const sec = sections.find((s: any) => s.id === m.sectionId);
+                            const bat = sec ? batches.find((b: any) => b.id === sec.batchId) : null;
+                            const bName = bat ? `${bat.name} (${bat.year})` : (m.batchName ? `${m.batchName} (${m.batchYear || ''})` : '');
+                            const sName = m.sectionName || sec?.name || '';
+                            if (bName && sName) {
+                              sectionLabels.push(`${bName} - Sec ${sName}`);
+                            } else if (sName) {
+                              sectionLabels.push(`Sec ${sName}`);
+                            }
+                          });
+                        }
+                        if (sectionLabels.length === 0) {
+                          const ids = [
+                            f.sectionId,
+                            ...(Array.isArray(f.assignedSectionIds) ? f.assignedSectionIds : [])
+                          ].filter(Boolean);
+                          ids.forEach(sid => {
+                            const sec = sections.find((s: any) => s.id === sid);
+                            const bat = sec ? batches.find((b: any) => b.id === sec.batchId) : null;
+                            const bName = bat ? `${bat.name} (${bat.year})` : '';
+                            const sName = sec ? sec.name : sid;
+                            if (bName && sName) {
+                              sectionLabels.push(`${bName} - Sec ${sName}`);
+                            } else if (sName) {
+                              sectionLabels.push(`Sec ${sName}`);
+                            }
+                          });
+                        }
+                        if (sectionLabels.length === 0 && (f.section || f.sections)) {
+                          const legacy = [f.section, f.sections].filter(Boolean);
+                          legacy.forEach(l => {
+                            sectionLabels.push(`Sec ${l}`);
+                          });
+                        }
+                        const sectionNameDisplay = sectionLabels.length > 0
+                          ? Array.from(new Set(sectionLabels)).join(", ")
                           : "Unassigned";
 
                         const batchObj = f.batchId ? batches.find((b: any) => b.id === f.batchId) : null;
@@ -2895,16 +4022,7 @@ function MonitoringTab({ faculties, students, sections, batches, token, onRefres
                               </div>
                             </td>
                             <td className="px-4 py-3.5 font-bold text-slate-800">{f.department || '—'}</td>
-                            <td className="px-4 py-3.5">
-                              <div className="flex items-center gap-1.5 mb-0.5">
-                                <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-900 border border-amber-500/30 rounded text-[10px] font-mono font-black">
-                                  {getSubjectShortForm(subjectDisplayName, f.subjectShortForm, f.subjectCode)}
-                                </span>
-                                {f.subjectCode && <span className="text-[9px] text-indigo-600 font-mono font-bold">{f.subjectCode}</span>}
-                              </div>
-                              <div className="font-extrabold text-slate-800 text-xs">{subjectDisplayName}</div>
-                            </td>
-                            <td className="px-4 py-3.5 font-bold text-slate-700">{f.labName || '—'}</td>
+
                             <td className="px-4 py-3.5 text-center">
                               <span 
                                 onClick={() => {
@@ -2943,7 +4061,17 @@ function MonitoringTab({ faculties, students, sections, batches, token, onRefres
                             <td className="px-4 py-3.5 text-center">
                               <div className="flex items-center justify-center gap-1.5">
                                 <button
-                                  onClick={() => exportFacultyObservationMarksExcel(f, students)}
+                                  onClick={() => {
+                                    setExportSelectModalFaculty(f);
+                                    const bList = getFacultyBatchesForExport(f);
+                                    if (bList.length > 0) {
+                                      setSelectedExportBatchId(bList[0].id);
+                                      const sList = getFacultySectionsForExport(f, bList[0].id);
+                                      if (sList.length > 0) {
+                                        setSelectedExportSectionId(sList[0].id);
+                                      }
+                                    }
+                                  }}
                                   className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-black flex items-center gap-1 cursor-pointer transition border border-emerald-200/60 shadow-xs"
                                   title="Export Observation Marks (.xlsx)"
                                 >
@@ -2974,66 +4102,6 @@ function MonitoringTab({ faculties, students, sections, batches, token, onRefres
         {/* ── STUDENT MONITORING ──────────────────────────────────────────────── */}
         {tab === 'student' && (
           <div className="p-5 space-y-5">
-            {/* Section Selection Bar */}
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <BookOpenCheck className="w-4 h-4 text-indigo-600" />
-                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                    Filter Students By Section
-                  </h4>
-                </div>
-                {selectedSectionFilter && (
-                  <button
-                    onClick={() => setSelectedSectionFilter('')}
-                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>Show All Sections</span>
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-
-              {/* Section Filter Pills */}
-              <div className="flex flex-wrap gap-2 pt-1">
-                <button
-                  onClick={() => setSelectedSectionFilter('')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
-                    !selectedSectionFilter
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
-                  All Sections ({students.length})
-                </button>
-                {availableSections.map((secName: string) => {
-                  const secCount = students.filter((s: any) => {
-                    const sSec = String(s.section || s.sectionName || s.sectionId || '').toLowerCase();
-                    const targetSec = secName.toLowerCase();
-                    return sSec === targetSec || sSec.endsWith(targetSec) || targetSec.endsWith(sSec);
-                  }).length;
-
-                  return (
-                    <button
-                      key={secName}
-                      onClick={() => setSelectedSectionFilter(secName)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border flex items-center gap-1.5 ${
-                        selectedSectionFilter === secName
-                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      <span>{secName}</span>
-                      <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                        selectedSectionFilter === secName ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
-                      }`}>
-                        {secCount}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
 
             {/* Search Input & Legend */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
@@ -3148,6 +4216,553 @@ function MonitoringTab({ faculties, students, sections, batches, token, onRefres
             )}
           </div>
         )}
+
+        {/* ── DAY-BY-DAY REPORTS ──────────────────────────────────────────────── */}
+        {tab === 'dayreport' && (
+          <div className="p-5 space-y-5">
+            {/* Header & Date Selector Toolbar */}
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="w-5 h-5 text-indigo-600" />
+                  <h3 className="text-sm font-extrabold text-slate-800">Day-by-Day Attendance & Observation Reports</h3>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Inspect daily student attendance records and experiment scores for any selected date.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Date Picker */}
+                <div className="flex items-center gap-2 bg-white font-extrabold text-xs rounded-xl border border-slate-200 px-3.5 py-2 transition shadow-xs">
+                  <Calendar className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span className="text-slate-500 font-bold shrink-0">Select Date:</span>
+                  <input
+                    type="date"
+                    value={reportDate}
+                    onChange={(e) => setReportDate(e.target.value)}
+                    className="bg-transparent font-black text-slate-900 focus:outline-none cursor-pointer"
+                  />
+                </div>
+
+                {/* Quick Date Shortcuts */}
+                <button
+                  type="button"
+                  onClick={() => setReportDate(getLocalDateString())}
+                  className={`px-3 py-2 text-xs font-bold rounded-xl border transition cursor-pointer ${
+                    reportDate === getLocalDateString()
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() - 1);
+                    setReportDate(getLocalDateString(d));
+                  }}
+                  className="px-3 py-2 text-xs font-bold rounded-xl border bg-white text-slate-700 border-slate-200 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Yesterday
+                </button>
+
+                {/* Export Excel Button */}
+                <button
+                  onClick={() => {
+                    const rows = filteredDayReportList.map((item: any, idx: number) => ({
+                      'S.No': idx + 1,
+                      'Roll No': formatRollNo(item.student.rollNo),
+                      'Student Name': item.student.name || '-',
+                      'Register Number': item.student.registerNo || '-',
+                      'Section': item.student.section || '-',
+                      'Batch': item.student.batch || '-',
+                      'Attendance Status': item.rawStatus,
+                      'Observation Record': item.obsStatusText,
+                      'Record Status': item.recStatusText,
+                    }));
+                    const wb = XLSX.utils.book_new();
+                    const ws = XLSX.utils.json_to_sheet(rows);
+                    XLSX.utils.book_append_sheet(wb, ws, `Day_Report_${reportDate}`);
+                    XLSX.writeFile(wb, `HOD_Day_Report_${reportDate}.xlsx`);
+                  }}
+                  className="py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs active:scale-95"
+                  title="Download Day Attendance Report as Excel (.xlsx)"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Export Day Report (.xlsx)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Daily KPI Metrics Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-wider">Attendance Rate</p>
+                  <h4 className="text-xl font-black text-slate-800 mt-0.5">{dayAttendancePct}%</h4>
+                  <p className="text-[10px] text-slate-500 font-semibold">{dayPresentCount} of {dayTotalCount} Present</p>
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-wider">Present Today</p>
+                  <h4 className="text-xl font-black text-emerald-600 mt-0.5">{dayPresentCount}</h4>
+                  <p className="text-[10px] text-emerald-700 font-semibold">Marked Present</p>
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-black">
+                  <Check className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-wider">Absentees Today</p>
+                  <h4 className="text-xl font-black text-rose-600 mt-0.5">{dayAbsentCount}</h4>
+                  <p className="text-[10px] text-rose-700 font-semibold">Absent on {reportDate}</p>
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-black">
+                  <XCircle className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-wider">On Duty Today</p>
+                  <h4 className="text-xl font-black text-amber-600 mt-0.5">{dayODCount}</h4>
+                  <p className="text-[10px] text-amber-700 font-semibold">On Duty on {reportDate}</p>
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-black">
+                  <Clock className="w-5 h-5" />
+                </div>
+              </div>
+            </div>
+
+            {/* View Switcher & Search Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-100 shadow-xs">
+              <div className="inline-flex p-1 bg-slate-100/80 rounded-xl border border-slate-200/60">
+                <button
+                  type="button"
+                  onClick={() => setReportViewTab('attendance')}
+                  className={`px-3 py-1.5 text-xs font-black rounded-lg transition-all cursor-pointer ${
+                    reportViewTab === 'attendance'
+                      ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Daily Attendance Roster
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReportViewTab('evaluations')}
+                  className={`px-3 py-1.5 text-xs font-black rounded-lg transition-all cursor-pointer ${
+                    reportViewTab === 'evaluations'
+                      ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Daily Observation Records
+                </button>
+              </div>
+
+              <div className="relative max-w-xs w-full">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={reportSearchQuery}
+                  onChange={(e) => setReportSearchQuery(e.target.value)}
+                  placeholder="Search student or roll no..."
+                  className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+            </div>
+
+            {/* Data Tables */}
+            {reportViewTab === 'attendance' ? (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 text-[10px] font-extrabold uppercase tracking-wider">
+                        <th className="px-4 py-3 text-center">S.No</th>
+                        <th className="px-4 py-3">Roll No</th>
+                        <th className="px-4 py-3">Student Name</th>
+                        <th className="px-4 py-3">Register Number</th>
+                        <th className="px-4 py-3">Section / Batch</th>
+                        <th className="px-4 py-3 text-center">Attendance Status on {reportDate}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-semibold">
+                      {filteredDayReportList.map((item: any, idx: number) => (
+                        <tr key={item.student.id || idx} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-4 py-3 text-center font-bold text-slate-400">{idx + 1}</td>
+                          <td className="px-4 py-3 font-mono font-bold text-slate-700 whitespace-nowrap">{formatRollNo(item.student.rollNo)}</td>
+                          <td className="px-4 py-3">
+                            <div className="font-extrabold text-slate-800">{item.student.name}</div>
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-slate-500">{item.student.registerNo || '-'}</td>
+                          <td className="px-4 py-3 font-semibold text-slate-600">{item.student.section || '-'} • {item.student.batch || '-'}</td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide border inline-block ${
+                              item.rawStatus === 'Present'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : item.rawStatus === 'On Duty'
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                : 'bg-rose-50 text-rose-700 border-rose-200'
+                            }`}>
+                              {item.rawStatus}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredDayReportList.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-10 text-center text-slate-400 font-semibold text-sm">
+                            No attendance records found for {reportDate}.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 text-[10px] font-extrabold uppercase tracking-wider">
+                        <th className="px-4 py-3 text-center">S.No</th>
+                        <th className="px-4 py-3">Roll No</th>
+                        <th className="px-4 py-3">Student Name</th>
+                        <th className="px-4 py-3">Register Number</th>
+                        <th className="px-4 py-3 text-center">Observation Notebook Record ({reportDate})</th>
+                        <th className="px-4 py-3 text-center">Record Notebook Status ({reportDate})</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-semibold">
+                      {filteredDayReportList.map((item: any, idx: number) => (
+                        <tr key={item.student.id || idx} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-4 py-3 text-center font-bold text-slate-400">{idx + 1}</td>
+                          <td className="px-4 py-3 font-mono font-bold text-slate-700 whitespace-nowrap">{formatRollNo(item.student.rollNo)}</td>
+                          <td className="px-4 py-3">
+                            <div className="font-extrabold text-slate-800">{item.student.name}</div>
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-slate-500">{item.student.registerNo || '-'}</td>
+                          <td className="px-4 py-3 text-center">
+                            {item.obsItems && item.obsItems.length > 0 ? (
+                              <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-[280px] mx-auto">
+                                {item.obsItems.map((expItem: any, eIdx: number) => {
+                                  const scoreStr = String(expItem.score || '');
+                                  const isF = scoreStr.startsWith('F/') || scoreStr.startsWith('F-');
+                                  const isA = scoreStr === 'A' || scoreStr.startsWith('A/');
+                                  const isL = scoreStr.startsWith('L/') || scoreStr.startsWith('L-');
+                                  const isPass = scoreStr === '10' || expItem.score === 10;
+
+                                  return (
+                                    <span 
+                                      key={eIdx}
+                                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-black border shadow-2xs ${
+                                        isA
+                                          ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                          : isF
+                                          ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                          : isL
+                                          ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                                          : isPass
+                                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                          : 'bg-blue-50 text-blue-800 border-blue-200'
+                                      }`}
+                                    >
+                                      <span className="text-slate-400 font-extrabold text-[10px]">Exp {expItem.expNum}:</span>
+                                      <span>{expItem.score}</span>
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 font-semibold text-xs">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {item.recItems && item.recItems.length > 0 ? (
+                              <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-[280px] mx-auto">
+                                {item.recItems.map((recItem: any, rIdx: number) => (
+                                  <span 
+                                    key={rIdx}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-black bg-indigo-50 text-indigo-800 border border-indigo-200 shadow-2xs"
+                                  >
+                                    <span className="text-indigo-400 font-extrabold text-[10px]">Exp {recItem.expNum}:</span>
+                                    <span>{recItem.status}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 font-semibold text-xs">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredDayReportList.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-10 text-center text-slate-400 font-semibold text-sm">
+                            No observation records found for {reportDate}.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  TAB 6 — HOD PROFILE & PASSWORD CHANGE
+// ═══════════════════════════════════════════════════════════════════════════════
+function HODProfileTab({ user, updateUser, token, authFetch }: { user: any; updateUser: any; token: string; authFetch: any }) {
+  const [hodName, setHodName] = useState(user.name || 'Dr. Rajesh Sharma');
+  const [nameLoading, setNameLoading] = useState(false);
+  const [nameError, setNameError] = useState('');
+  const [nameSuccess, setNameSuccess] = useState('');
+
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passLoading, setPassLoading] = useState(false);
+  const [passError, setPassError] = useState('');
+  const [passSuccess, setPassSuccess] = useState('');
+
+  useEffect(() => {
+    if (user.name) {
+      setHodName(user.name);
+    }
+  }, [user.name]);
+
+  const handleNameUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setNameError('');
+    setNameSuccess('');
+
+    if (!hodName.trim()) {
+      setNameError('Name cannot be empty.');
+      return;
+    }
+
+    setNameLoading(true);
+    try {
+      const res = await authFetch('/api/admin/profile', {
+        method: 'PUT',
+        body: JSON.stringify({ name: hodName.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        updateUser({ name: hodName.trim() });
+        setNameSuccess('HOD Profile name updated successfully!');
+      } else {
+        setNameError(data.error || 'Failed to update HOD profile name.');
+      }
+    } catch (err) {
+      setNameError('Network error updating profile name.');
+    } finally {
+      setNameLoading(false);
+    }
+  };
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPassError('');
+    setPassSuccess('');
+
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      setPassError('All fields are required.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPassError('New password and confirm password do not match.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPassError('New password must be at least 6 characters long.');
+      return;
+    }
+
+    setPassLoading(true);
+    try {
+      const res = await authFetch('/api/admin/password', {
+        method: 'POST',
+        body: JSON.stringify({ oldPassword, newPassword }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPassSuccess('Your password has been successfully updated.');
+        setOldPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        setPassError(data.error || 'Failed to update password. Verify current password.');
+      }
+    } catch (err) {
+      setPassError('Network error occurred. Please try again.');
+    } finally {
+      setPassLoading(false);
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
+      {/* HOD Profile Overview & Name Edit Card */}
+      <div className="lg:col-span-1 bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-6">
+        <div className="text-center space-y-3">
+          <div className="w-20 h-20 bg-indigo-50 border-4 border-indigo-150 rounded-full flex items-center justify-center mx-auto text-indigo-600 shadow-inner">
+            <User className="w-10 h-10" />
+          </div>
+          <div>
+            <h3 className="font-extrabold text-slate-800 text-lg">{user.name || 'HOD'}</h3>
+            <p className="text-xs text-indigo-600 font-extrabold uppercase tracking-wider mt-0.5">
+              {user.role === 'Admin' ? 'Department HOD' : user.role}
+            </p>
+          </div>
+        </div>
+
+        {/* Edit Name Form */}
+        <form onSubmit={handleNameUpdate} className="space-y-3 pt-3 border-t border-slate-100">
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">HOD Full Name</label>
+            <span className="text-[10px] text-indigo-600 font-semibold">Editable</span>
+          </div>
+
+          {nameError && (
+            <div className="p-2.5 bg-rose-50 border border-rose-200/80 rounded-xl text-xs text-rose-700 font-bold flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              <span>{nameError}</span>
+            </div>
+          )}
+
+          {nameSuccess && (
+            <div className="p-2.5 bg-emerald-50 border border-emerald-200/80 rounded-xl text-xs text-emerald-800 font-bold flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span>{nameSuccess}</span>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={hodName}
+              onChange={(e) => setHodName(e.target.value)}
+              placeholder="Enter HOD Name"
+              required
+              className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition"
+            />
+            <button
+              type="submit"
+              disabled={nameLoading}
+              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-1 shrink-0 shadow-sm"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              <span>{nameLoading ? 'Saving...' : 'Save'}</span>
+            </button>
+          </div>
+        </form>
+
+        <div className="border-t border-slate-100 pt-5 space-y-3 text-xs">
+          <div className="flex justify-between items-center py-1">
+            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Portal Username</span>
+            <strong className="text-slate-700 font-mono">{user.email || user.username}</strong>
+          </div>
+          <div className="flex justify-between items-center py-1">
+            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Institution</span>
+            <strong className="text-slate-700 text-right">Panimalar Engineering College</strong>
+          </div>
+          <div className="flex justify-between items-center py-1">
+            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Department</span>
+            <strong className="text-slate-700 text-right">Artificial Intelligence & Data Science</strong>
+          </div>
+          <div className="flex justify-between items-center py-1">
+            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Portal Access Level</span>
+            <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded-full border border-indigo-200/50">
+              Department HOD
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Change Password Card */}
+      <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
+        <h3 className="font-extrabold text-slate-800 text-base mb-2">Change Account Password</h3>
+        <p className="text-xs text-slate-400 mb-6">Update your secure access credentials. Password updates apply instantly.</p>
+
+        <form onSubmit={handlePasswordChange} className="space-y-4 max-w-md">
+          {passError && (
+            <div className="p-3.5 bg-rose-50 border border-rose-200/80 rounded-2xl text-xs text-rose-700 font-bold flex items-center gap-2 animate-shake">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>{passError}</span>
+            </div>
+          )}
+
+          {passSuccess && (
+            <div className="p-3.5 bg-emerald-50 border border-emerald-250/80 rounded-2xl text-xs text-emerald-800 font-bold flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{passSuccess}</span>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Current Password</label>
+            <input
+              type="password"
+              value={oldPassword}
+              onChange={(e) => setOldPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">New Password</label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Minimum 6 characters"
+              required
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Confirm New Password</label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Confirm new password"
+              required
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={passLoading}
+            className="px-6 py-2.5 bg-[#0B192C] hover:bg-slate-850 disabled:opacity-50 text-white text-xs font-black rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm uppercase tracking-wider"
+          >
+            {passLoading ? 'Saving Changes...' : 'Save Password'}
+          </button>
+        </form>
       </div>
     </div>
   );
@@ -3159,15 +4774,14 @@ function MonitoringTab({ faculties, students, sections, batches, token, onRefres
 const TABS = [
   { id: 'overview',    label: 'Overview',          icon: LayoutDashboard },
   { id: 'batches',     label: 'Batches & Sections', icon: Layers },
-  { id: 'timetable',  label: 'Timetable Builder',  icon: Calendar },
   { id: 'access',     label: 'Faculty Access',      icon: Shield },
   { id: 'monitor',    label: 'Live Monitoring',     icon: Activity },
-  { id: 'notify',     label: 'Notifications',       icon: Bell },
+  { id: 'profile',    label: 'HOD Profile',         icon: User },
 ];
 
 export default function AdminDashboard() {
   const { tab: paramTab } = useParams<{ tab?: string }>();
-  const { user, getAuthHeaders } = useAuth();
+  const { user, updateUser, getAuthHeaders } = useAuth();
   const { faculties, students, refreshData } = useAcademicData();
 
   const [activeTab, setActiveTab] = useState('overview');
@@ -3222,19 +4836,27 @@ export default function AdminDashboard() {
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="px-3 py-1 bg-indigo-500/20 text-indigo-300 text-[10px] font-bold rounded-full uppercase tracking-widest border border-indigo-500/30">
-              Admin Portal
+              HOD Portal
             </span>
             <h1 className="text-2xl md:text-3xl font-black mt-2 tracking-tight">
-              Admin Dashboard
+              HOD Dashboard
             </h1>
             <p className="text-xs text-slate-300 mt-1 font-medium">
-              Welcome, <span className="text-indigo-300 font-extrabold">{user.name}</span> · Academic Year 2026–2027
+              Welcome, <span className="text-indigo-300 font-extrabold">{user.name === 'Super Admin' ? 'HOD' : user.name}</span> · Academic Year 2026–2027
             </p>
           </div>
           <div className="flex items-center gap-3 bg-white/5 border border-white/10 px-4 py-3 rounded-2xl">
             <div className="flex flex-col text-right">
-              <p className="text-xs font-bold text-white">{batches.length} Batches</p>
-              <p className="text-[10px] text-indigo-300">{sections.length} sections · {students.length} students</p>
+              {(() => {
+                const activeSecCount = sections.filter(s => batches.some(b => b.id === s.batchId)).length;
+                const totalActiveStudents = batches.reduce((acc, b) => acc + getBatchStudents(b, sections, students).length, 0);
+                return (
+                  <>
+                    <p className="text-xs font-bold text-white">{batches.length} Batches</p>
+                    <p className="text-[10px] text-indigo-300">{activeSecCount} sections · {totalActiveStudents} students</p>
+                  </>
+                );
+              })()}
             </div>
             <div className="w-px h-8 bg-white/10" />
             <button onClick={loadBatchesAndSections}
@@ -3245,25 +4867,10 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ── Tab Nav ──────────────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-1.5 flex flex-wrap gap-1">
-        {TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setActiveTab(id)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer flex-1 min-w-[120px] justify-center
-              ${activeTab === id
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'}`}
-          >
-            <Icon className="w-3.5 h-3.5" />
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* Tab navigation is now handled column-wise in the sidebar menu */}
 
       {/* ── Content ──────────────────────────────────────────────────────────── */}
-      {loading && activeTab !== 'notify' ? (
+      {loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="flex flex-col items-center gap-4">
             <div className="w-10 h-10 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin" style={{ borderWidth: 3 }} />
@@ -3274,7 +4881,6 @@ export default function AdminDashboard() {
         <>
           {activeTab === 'overview'   && <OverviewTab batches={batches} sections={sections} faculties={faculties} students={students} />}
           {activeTab === 'batches'    && <BatchesTab  batches={batches} sections={sections} faculties={faculties} setBatches={setBatches} setSections={setSections} token={token} onReload={loadBatchesAndSections} />}
-          {activeTab === 'timetable' && <TimetableBuilderTab sections={sections} batches={batches} token={token} />}
           {activeTab === 'access'    && (
             <AccessTab
               faculties={faculties} batches={batches} sections={sections} token={token}
@@ -3282,7 +4888,7 @@ export default function AdminDashboard() {
             />
           )}
           {activeTab === 'monitor'   && <MonitoringTab faculties={faculties} students={students} sections={sections} batches={batches} token={token} onRefresh={async () => { await refreshData(); await loadBatchesAndSections(); }} />}
-          {activeTab === 'notify'    && <NotificationsTab batches={batches} token={token} />}
+          {activeTab === 'profile'   && <HODProfileTab user={user} updateUser={updateUser} token={token} authFetch={authFetch} />}
         </>
       )}
     </div>

@@ -25,7 +25,9 @@ import {
   BarChart2,
   Upload,
   Sun,
-  Moon
+  Moon,
+  Activity,
+  Bell
 } from 'lucide-react';
 import { useAcademicData } from '../context/AcademicDataContext';
 
@@ -62,12 +64,12 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
 
   // 1. HOD NAVIGATION
   const hodNav: SidebarItem[] = [
-    { label: 'Overview', path: '/hod/overview', icon: <LayoutDashboard className="w-5 h-5" /> },
-    { label: 'Faculty Monitoring', path: '/hod/monitoring', icon: <BarChart2 className="w-5 h-5" /> },
-    { label: 'Faculty Access', path: '/hod/access', icon: <Users className="w-5 h-5" /> },
-    { label: 'Student Records', path: '/hod/students', icon: <GraduationCap className="w-5 h-5" /> },
-    { label: 'Upload Data', path: '/hod/upload', icon: <Upload className="w-5 h-5" /> },
-    { label: 'Settings', path: '/hod/settings', icon: <Settings className="w-5 h-5" /> },
+    { label: 'Overview', path: '/admin/overview', icon: <LayoutDashboard className="w-5 h-5" /> },
+    { label: 'Batches & Sections', path: '/admin/batches', icon: <Building className="w-5 h-5" /> },
+    { label: 'Timetable Builder', path: '/admin/timetable', icon: <CalendarDays className="w-5 h-5" /> },
+    { label: 'Faculty Access', path: '/admin/access', icon: <Users className="w-5 h-5" /> },
+    { label: 'Live Monitoring', path: '/admin/monitor', icon: <Activity className="w-5 h-5" /> },
+    { label: 'Admin Profile', path: '/admin/profile', icon: <UserIcon className="w-5 h-5" /> },
   ];
 
   // 2. FACULTY NAVIGATION
@@ -95,6 +97,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
   const getNavItems = () => {
     switch (user.role) {
       case 'HOD':
+      case 'Admin':
         return hodNav;
       case 'Faculty':
         return facultyNav;
@@ -118,7 +121,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
   };
 
   return (
-    <div className={`min-h-screen flex flex-col font-sans transition-colors duration-200 ${theme === 'dark' ? 'bg-slate-950 text-slate-100 dark' : 'bg-slate-50 text-slate-900'}`}>
+    <div className="min-h-screen flex flex-col font-sans transition-colors duration-200 bg-slate-50 text-slate-900">
       {/* NAVY BLUE TOP HEADER */}
       <header id="app-header" className="bg-[#0B192C] text-white h-16 px-4 md:px-6 flex items-center justify-between shadow-md shrink-0 sticky top-0 z-50">
         <div className="flex items-center gap-3 shrink-0">
@@ -142,21 +145,12 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         {/* Center Portal Branding */}
         <div className="flex-1 flex justify-center text-center px-4">
           <h1 className="text-xs sm:text-base md:text-xl font-black tracking-widest text-white uppercase font-sans">
-            LABORATORY MANAGEMENT
+            LAB MONITORING
           </h1>
         </div>
 
         {/* Right Section */}
         <div className="flex items-center gap-2.5 sm:gap-4 shrink-0">
-          {/* TIME & THEME TOGGLE */}
-          <button
-            onClick={toggleTheme}
-            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-            className="p-2 bg-slate-800/60 border border-slate-700 hover:bg-slate-700 text-amber-300 rounded-xl transition-all cursor-pointer shrink-0"
-          >
-            {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-300" /> : <Moon className="w-4 h-4 text-indigo-300" />}
-          </button>
-
           <div className="flex items-center text-xs md:text-sm font-black text-slate-100 bg-slate-800/40 border border-slate-700/30 px-3 py-1.5 rounded-xl font-mono">
             <span>{timeStr || '12:00:00 PM'}</span>
           </div>

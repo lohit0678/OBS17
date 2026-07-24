@@ -147,7 +147,7 @@ export default function StudentDetail() {
               </span>
             </div>
             <p className="text-xs text-slate-400 font-semibold mt-1 flex items-center gap-1">
-              <User className="w-3.5 h-3.5" /> Reg No: <strong className="text-slate-600">{student.registerNo}</strong> &bull; Roll No: <strong className="text-slate-600">{student.rollNo}</strong>
+              <User className="w-3.5 h-3.5" /> Reg No: <strong className="text-slate-600">{student.registerNo}</strong> &bull; Roll No: <strong className="text-slate-600">{(student.rollNo || '').replace(/\s+/g, '').toUpperCase()}</strong>
             </p>
             <p className="text-xs text-indigo-600 font-medium mt-1.5 flex items-center gap-1">
               <Mail className="w-3.5 h-3.5" /> {student.email}

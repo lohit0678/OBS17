@@ -9,3 +9,6 @@ coverage/
 .mongo_data/
 *.zip
 backup_files/
+scratch/
+uploads/
+*.db

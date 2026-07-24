@@ -130,6 +130,7 @@ const StudentSchema = new Schema(
     rollNo: { type: String, required: true },
     department: { type: String, required: true },
     semester: { type: String, required: true },
+    year: { type: String, default: "II" },
     section: { type: String, required: true },
     phone: { type: String, default: "" },
     parentName: { type: String, default: "" },

@@ -20,6 +20,7 @@ interface AuthContextType {
   register: (name: string, email: string, password: string, labName: string) => Promise<{ success: boolean; error?: string }>;
   loginWithGoogle: (credential: string) => Promise<{ success: boolean; error?: string }>;
   updateProfilePic: (profilePic: string) => Promise<{ success: boolean; error?: string }>;
+  updateUser: (userData: Partial<User>) => void;
   getAuthHeaders: () => Record<string, string>;
 }
 
@@ -154,6 +155,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateUser = (userData: Partial<User>) => {
+    setUser((prev) => {
+      const updated = { ...prev, ...userData };
+      localStorage.setItem('erp_user', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   const logout = () => {
     disconnectSocket();
     setUser(defaultUser);
@@ -161,7 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, register, loginWithGoogle, updateProfilePic, getAuthHeaders }}>
+    <AuthContext.Provider value={{ user, login, logout, register, loginWithGoogle, updateProfilePic, updateUser, getAuthHeaders }}>
       {children}
     </AuthContext.Provider>
   );

@@ -4,8 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { useAcademicData } from '../context/AcademicDataContext';
 import * as XLSX from 'xlsx';
 import {
-  LayoutDashboard, Users, BookOpen, Shield, Bell,
-  Plus, Upload, ChevronDown, X, Check, AlertTriangle,
+  LayoutDashboard, Users, BookOpen, Shield, Bell, User,
+  Plus, Upload, ChevronDown, X, Check, AlertTriangle, CheckCircle2,
   GraduationCap, Building2, Calendar, FileSpreadsheet,
   Layers, UserCheck, Trash2, RefreshCw, Eye, BookOpenCheck,
   ClipboardList, Send, Search, Mail, Pencil, Activity,
@@ -18,11 +18,72 @@ const YEAR_OPTIONS    = ['2021-2025', '2022-2026', '2023-2027', '2024-2028', '20
 const DEPT_OPTIONS    = ['AI & DS', 'CSE', 'ECE', 'EEE', 'Mechanical', 'Civil'];
 const DAYS_OF_WEEK    = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const SEMESTER_OPTIONS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+const ROMAN_YEAR_OPTIONS = ['I', 'II', 'III', 'IV'];
+
+const mapSemesterToYear = (sem: string): string => {
+  switch (sem) {
+    case 'I':
+    case 'II':
+      return 'I';
+    case 'III':
+    case 'IV':
+      return 'II';
+    case 'V':
+    case 'VI':
+      return 'III';
+    case 'VII':
+    case 'VIII':
+      return 'IV';
+    default:
+      return 'I';
+  }
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Batch  { id: string; name: string; year: string; department: string; isActive: boolean; }
 interface Section { id: string; batchId: string; name: string; timetableStructureId: string; timetable?: any[]; }
 interface ParsedTimetableRow { day: string; period: string; subject: string; faculty: string; }
+
+export function getSubjectShortForm(subjectName?: string, explicitShortForm?: string, subjectCode?: string): string {
+  if (explicitShortForm && explicitShortForm.trim()) return explicitShortForm.trim().toUpperCase();
+  if (!subjectName || subjectName === '—') return '—';
+  
+  const clean = subjectName.trim();
+  const knownMappings: Record<string, string> = {
+    'Knowledge Engineering': 'KIES',
+    'Knowledge Engineering and Intelligent Systems': 'KIES',
+    'Knowledge Engineering & Intelligent Systems': 'KIES',
+    'System Software': 'SSOS',
+    'System Software and Operating Systems': 'SSOS',
+    'System Software & Operating Systems': 'SSOS',
+    'Web Development': 'DEV',
+    'Development': 'DEV',
+    'Full Stack Development': 'FSD',
+    'Data Structures': 'DS',
+    'Design and Analysis of Algorithms': 'DAA',
+    'Object Oriented Programming': 'OOP',
+    'Database Management Systems': 'DBMS',
+    'Computer Networks': 'CN',
+    'Operating Systems': 'OS',
+    'Artificial Intelligence': 'AI',
+    'Machine Learning': 'ML',
+    'Deep Learning': 'DL',
+    'Cloud Computing': 'CC',
+  };
+
+  for (const [key, short] of Object.entries(knownMappings)) {
+    if (clean.toLowerCase().includes(key.toLowerCase())) {
+      return short;
+    }
+  }
+
+  const stopWords = new Set(['and', '&', 'of', 'in', 'for', 'the', 'to', 'with', 'lab', 'laboratory']);
+  const words = clean.split(/[\s\-_]+/).filter(w => !stopWords.has(w.toLowerCase()));
+  if (words.length >= 2) {
+    return words.map(w => w.charAt(0).toUpperCase()).join('');
+  }
+  return clean.slice(0, 4).toUpperCase();
+}
 
 // ─── Small shared components ─────────────────────────────────────────────────
 function Badge({ children, color = 'blue' }: { children: React.ReactNode; color?: string }) {
@@ -156,12 +217,12 @@ function OverviewTab({ batches, sections, faculties, students }: {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard icon={Layers}       label="Active Batches"   value={activeBatches}  sub={`${batches.length} total`}    color="blue"   />
         <StatCard icon={BookOpenCheck} label="Sections"         value={sections.length} sub="across all batches"          color="purple" />
-        <StatCard icon={GraduationCap} label="Total Students"   value={totalStudents}  sub={`${riskStudents} at risk`}    color="green"  />
+        <StatCard icon={GraduationCap} label="Total Students"   value={totalStudents}  sub="registered total"    color="green"  />
         <StatCard icon={UserCheck}    label="Active Faculty"   value={activeFaculty}  sub={`${faculties.length} pre-approved`} color="amber"  />
       </div>
 
       {/* Quick summary cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4">
         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
           <h3 className="font-extrabold text-slate-800 text-sm mb-4 flex items-center gap-2">
             <Layers className="w-4 h-4 text-indigo-500" />Batch Overview
@@ -188,33 +249,6 @@ function OverviewTab({ batches, sections, faculties, students }: {
             </div>
           )}
         </div>
-
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
-          <h3 className="font-extrabold text-slate-800 text-sm mb-4 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-500" />At-Risk Students
-          </h3>
-          {riskStudents === 0 ? (
-            <div className="flex items-center gap-3 p-4 bg-emerald-50 rounded-2xl">
-              <Check className="w-5 h-5 text-emerald-600" />
-              <p className="text-sm font-bold text-emerald-700">All students are on track!</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {students.filter((s: any) => s.riskFlagged).slice(0, 4).map((s: any) => (
-                <div key={s.id} className="flex items-start justify-between p-3 bg-red-50 rounded-2xl">
-                  <div>
-                    <p className="text-sm font-bold text-slate-800">{s.name}</p>
-                    <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">{s.riskReason}</p>
-                  </div>
-                  <Badge color="red">{s.attendance}% att.</Badge>
-                </div>
-              ))}
-              {riskStudents > 4 && (
-                <p className="text-xs text-slate-500 text-center pt-1">+{riskStudents - 4} more at-risk students</p>
-              )}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );
@@ -231,7 +265,8 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
   const [saving,   setSaving]   = useState(false);
   const [toast,    setToast]    = useState<{ msg: string; type: 'success'|'error' } | null>(null);
   const [sectionSemester, setSectionSemester] = useState('III');
-  const [form, setForm] = useState({ name: '', registerNo: '', rollNo: '', email: '', phone: '', semester: 'III' });
+  const [sectionYear, setSectionYear] = useState('II');
+  const [form, setForm] = useState({ name: '', registerNo: '', rollNo: '', email: '', phone: '', semester: 'III', year: 'II' });
 
   const authFetch = (url: string, opts: RequestInit = {}) =>
     fetch(url, { ...opts, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', ...(opts.headers || {}) } });
@@ -242,9 +277,15 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
       .then(d => {
         const list = d.students || [];
         setStudents(list);
-        if (list.length > 0 && list[0].semester) {
-          setSectionSemester(list[0].semester);
-          setForm(p => ({ ...p, semester: list[0].semester }));
+        if (list.length > 0) {
+          if (list[0].semester) {
+            setSectionSemester(list[0].semester);
+            setForm(p => ({ ...p, semester: list[0].semester }));
+          }
+          if (list[0].year) {
+            setSectionYear(list[0].year);
+            setForm(p => ({ ...p, year: list[0].year }));
+          }
         }
       })
       .catch(() => setStudents([]))
@@ -256,12 +297,12 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
     try {
       const res = await authFetch(`/api/admin/sections/${section.id}/update-semester`, {
         method: 'PUT',
-        body: JSON.stringify({ semester: sectionSemester }),
+        body: JSON.stringify({ semester: sectionSemester, year: sectionYear }),
       });
       const data = await res.json();
       if (res.ok) {
         setStudents(data.students || []);
-        setToast({ msg: `Updated semester to "${sectionSemester}" for all ${students.length} students!`, type: 'success' });
+        setToast({ msg: `Updated semester to "${sectionSemester}" and year to "${sectionYear}" for all ${students.length} students!`, type: 'success' });
       } else {
         setToast({ msg: data.error || 'Failed to update semester', type: 'error' });
       }
@@ -273,17 +314,39 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
   };
 
   const handleSingleStudentSemesterChange = async (studentId: string, newSem: string) => {
+    const newYear = mapSemesterToYear(newSem);
     try {
-      const res = await authFetch(`/api/admin/students/${studentId}/semester`, {
-        method: 'PUT',
-        body: JSON.stringify({ semester: newSem }),
-      });
-      if (res.ok) {
-        setStudents(prev => prev.map(s => s.id === studentId ? { ...s, semester: newSem } : s));
-        setToast({ msg: `Semester updated to ${newSem}`, type: 'success' });
+      const [resSem, resYr] = await Promise.all([
+        authFetch(`/api/admin/students/${studentId}/semester`, {
+          method: 'PUT',
+          body: JSON.stringify({ semester: newSem }),
+        }),
+        authFetch(`/api/admin/students/${studentId}/year`, {
+          method: 'PUT',
+          body: JSON.stringify({ year: newYear }),
+        })
+      ]);
+      if (resSem.ok && resYr.ok) {
+        setStudents(prev => prev.map(s => s.id === studentId ? { ...s, semester: newSem, year: newYear } : s));
+        setToast({ msg: `Semester updated to ${newSem} and Year updated to ${newYear}`, type: 'success' });
       }
     } catch {
-      setToast({ msg: 'Failed to update semester', type: 'error' });
+      setToast({ msg: 'Failed to update semester and year', type: 'error' });
+    }
+  };
+
+  const handleSingleStudentYearChange = async (studentId: string, newYear: string) => {
+    try {
+      const res = await authFetch(`/api/admin/students/${studentId}/year`, {
+        method: 'PUT',
+        body: JSON.stringify({ year: newYear }),
+      });
+      if (res.ok) {
+        setStudents(prev => prev.map(s => s.id === studentId ? { ...s, year: newYear } : s));
+        setToast({ msg: `Year updated to ${newYear}`, type: 'success' });
+      }
+    } catch {
+      setToast({ msg: 'Failed to update year', type: 'error' });
     }
   };
 
@@ -292,12 +355,12 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
     setSaving(true);
     try {
       const res = await authFetch(`/api/admin/sections/${section.id}/students`, {
-        method: 'POST', body: JSON.stringify({ ...form, semester: form.semester || sectionSemester }),
+        method: 'POST', body: JSON.stringify({ ...form, semester: form.semester || sectionSemester, year: form.year || sectionYear }),
       });
       const data = await res.json();
       if (res.ok) {
         setStudents(data.students || []);
-        setForm({ name: '', registerNo: '', rollNo: '', email: '', phone: '', semester: sectionSemester });
+        setForm({ name: '', registerNo: '', rollNo: '', email: '', phone: '', semester: sectionSemester, year: sectionYear });
         setToast({ msg: 'Student added successfully!', type: 'success' });
       } else {
         setToast({ msg: data.error || 'Failed to add student', type: 'error' });
@@ -362,7 +425,7 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
         const regIdx = headerKeys.findIndex((k: string) => k.includes('REGISTER') || k.includes('REG'));
         const rollIdx = headerKeys.findIndex((k: string) => k.includes('ROLL'));
 
-        const parsedStudents: { name: string; registerNo: string; rollNo: string; semester: string }[] = [];
+        const parsedStudents: { name: string; registerNo: string; rollNo: string; semester: string; year: string }[] = [];
 
         for (let r = headerRowIdx + 1; r < matrix.length; r++) {
           const row = matrix[r];
@@ -382,7 +445,7 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
             !upperName.includes('BATCH') &&
             !upperName.includes('NAME')
           ) {
-            parsedStudents.push({ name, registerNo, rollNo, semester: sectionSemester });
+            parsedStudents.push({ name, registerNo, rollNo, semester: sectionSemester, year: sectionYear });
           }
         }
 
@@ -394,13 +457,13 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
 
         const res = await authFetch(`/api/admin/sections/${section.id}/bulk-students`, {
           method: 'POST',
-          body: JSON.stringify({ students: parsedStudents, semester: sectionSemester }),
+          body: JSON.stringify({ students: parsedStudents, semester: sectionSemester, year: sectionYear }),
         });
         const data = await res.json();
         if (res.ok) {
           setStudents(data.students || []);
           setToast({
-            msg: `Bulk Import Complete: Successfully processed ${parsedStudents.length} students into Semester ${sectionSemester} (Added ${data.addedCount || 0}, Updated ${data.updatedCount || 0})!`,
+            msg: `Bulk Import Complete: Successfully processed ${parsedStudents.length} students into Semester ${sectionSemester} and Year ${sectionYear} (Added ${data.addedCount || 0}, Updated ${data.updatedCount || 0})!`,
             type: 'success'
           });
         } else {
@@ -429,10 +492,10 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
           </div>
           <div>
             <h4 className="text-xs font-extrabold text-indigo-900 uppercase tracking-wider">
-              Section Semester Setting
+              Section Semester & Year Setting
             </h4>
             <p className="text-[11px] text-indigo-700 font-medium">
-              Set or update the semester for all enrolled students in this section.
+              Set or update the semester and academic year for all enrolled students in this section.
             </p>
           </div>
         </div>
@@ -440,13 +503,28 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
           <select
             value={sectionSemester}
             onChange={e => {
-              setSectionSemester(e.target.value);
-              setForm(p => ({ ...p, semester: e.target.value }));
+              const sem = e.target.value;
+              setSectionSemester(sem);
+              const yr = mapSemesterToYear(sem);
+              setSectionYear(yr);
+              setForm(p => ({ ...p, semester: sem, year: yr }));
             }}
             className="px-3.5 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-extrabold text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-xs"
           >
             {SEMESTER_OPTIONS.map(sem => (
               <option key={sem} value={sem}>Semester {sem}</option>
+            ))}
+          </select>
+          <select
+            value={sectionYear}
+            onChange={e => {
+              setSectionYear(e.target.value);
+              setForm(p => ({ ...p, year: e.target.value }));
+            }}
+            className="px-3.5 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-extrabold text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-xs"
+          >
+            {ROMAN_YEAR_OPTIONS.map(yr => (
+              <option key={yr} value={yr}>Year {yr}</option>
             ))}
           </select>
           <button
@@ -496,6 +574,7 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
           <InputField label="Email" id="s-email" type="email" value={form.email} onChange={v => setForm(p => ({ ...p, email: v }))} placeholder="auto-generated if blank" />
           <InputField label="Phone" id="s-phone" value={form.phone} onChange={v => setForm(p => ({ ...p, phone: v }))} placeholder="+91 …" />
           <SelectField label="Semester" id="s-sem" value={form.semester} onChange={v => setForm(p => ({ ...p, semester: v }))} options={SEMESTER_OPTIONS} />
+          <SelectField label="Year" id="s-year" value={form.year} onChange={v => setForm(p => ({ ...p, year: v }))} options={ROMAN_YEAR_OPTIONS} />
           <div className="sm:col-span-2 flex justify-end pt-1">
             <button
               type="submit" disabled={saving}
@@ -526,6 +605,7 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
                   <th className="text-left py-2 px-3 text-slate-500 font-bold">Reg. No.</th>
                   <th className="text-left py-2 px-3 text-slate-500 font-bold">Roll</th>
                   <th className="text-left py-2 px-3 text-slate-500 font-bold">Semester</th>
+                  <th className="text-left py-2 px-3 text-slate-500 font-bold">Year</th>
                 </tr>
               </thead>
               <tbody>
@@ -535,15 +615,14 @@ function SectionStudentsModal({ section, batch, token, onClose }: {
                     <td className="py-2.5 px-3 text-slate-600">{s.registerNo}</td>
                     <td className="py-2.5 px-3 text-slate-600">{s.rollNo}</td>
                     <td className="py-2.5 px-3">
-                      <select
-                        value={s.semester || sectionSemester}
-                        onChange={e => handleSingleStudentSemesterChange(s.id, e.target.value)}
-                        className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-bold rounded-lg border border-indigo-200/60 focus:outline-none cursor-pointer"
-                      >
-                        {SEMESTER_OPTIONS.map(sem => (
-                          <option key={sem} value={sem}>Sem {sem}</option>
-                        ))}
-                      </select>
+                      <span className="inline-block px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-100">
+                        Sem {s.semester || sectionSemester}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span className="inline-block px-2.5 py-1 bg-amber-50 text-amber-700 text-xs font-bold rounded-lg border border-amber-100">
+                        Year {s.year || sectionYear}
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -856,7 +935,7 @@ function BatchesTab({ batches, sections, setBatches, setSections, token, onReloa
       ) : (
         <div className="space-y-4">
           {batches.map(batch => {
-            const batchSections = sections.filter(s => s.batchId === batch.id);
+            const batchSections = sections.filter(s => s.batchId === batch.id).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
             return (
               <div key={batch.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
                 {/* Batch header */}
@@ -1295,7 +1374,7 @@ function AssignSectionModal({ faculty, batches, sections, token, onClose, onSave
             className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-xl cursor-pointer transition">
             Cancel
           </button>
-          <button onClick={handleAssign} disabled={saving || !batchId}
+          <button onClick={handleAssign} disabled={saving}
             className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer transition disabled:opacity-60">
             {saving ? <Spinner /> : <Check className="w-3.5 h-3.5" />} Save Faculty Details
           </button>
@@ -1438,6 +1517,36 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
 
   const { refreshData } = useAcademicData();
 
+  const handleRemoveSectionMapping = async (faculty: any, mappingToRemove: any) => {
+    const secName = mappingToRemove.sectionName || '';
+    if (!window.confirm(`Are you sure you want to remove the assigned section "${secName}" for ${faculty.name || faculty.email}?`)) {
+      return;
+    }
+    setSaving(true);
+    try {
+      const targetId = faculty.id || faculty._id || faculty.email;
+      const res = await fetch(`/api/admin/faculty/${targetId}/assign-section`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ sectionMappings: [] })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setToast({ msg: 'Assigned section removed successfully!', type: 'success' });
+        refreshData();
+      } else {
+        setToast({ msg: data.error || 'Failed to remove assigned section', type: 'error' });
+      }
+    } catch {
+      setToast({ msg: 'Network error', type: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleAssignSave = (_fId: string, _bId: string, _sId: string) => {
     refreshData();
     setToast({ msg: 'Faculty details & section assignment saved!', type: 'success' });
@@ -1570,7 +1679,20 @@ function AccessTab({ faculties, batches, sections, token, onFacultiesChange }: {
                         {assignedSection ? (
                           <div className="flex items-center justify-between gap-2">
                             <div>
-                              <p className="font-bold text-slate-800">{assignedSection.name}</p>
+                              <div className="flex items-center gap-1.5">
+                                <p className="font-bold text-slate-800">{assignedSection.name}</p>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveSectionMapping(f, { sectionName: assignedSection.name, sectionId: f.sectionId });
+                                  }}
+                                  title="Remove assigned section mapping"
+                                  className="hover:bg-red-50 text-slate-400 hover:text-red-600 rounded p-0.5 transition cursor-pointer"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                               <p className="text-[10px] text-slate-400">{assignedBatch?.name} — {assignedBatch?.department}</p>
                             </div>
                             <button
@@ -1719,6 +1841,8 @@ function MonitoringTab({ faculties, students, sections, batches, onRefresh }: {
   const [facultySearch, setFacultySearch] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
   const [selectedSectionFilter, setSelectedSectionFilter] = useState<string>('');
+  const [monitoringBatchFilter, setMonitoringBatchFilter] = useState('');
+  const [monitoringSectionFilter, setMonitoringSectionFilter] = useState('');
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [isLive, setIsLive] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -1750,6 +1874,22 @@ function MonitoringTab({ faculties, students, sections, batches, onRefresh }: {
 
   // ── Faculty filter ────────────────────────────────────────────────────────
   const filteredFaculties = faculties.filter(f => {
+    if (monitoringBatchFilter) {
+      const batchSecIds = sections.filter(s => s.batchId === monitoringBatchFilter).map(s => s.id);
+      const hasBatchMapping = f.assignedSectionMappings?.some((m: any) => batchSecIds.includes(m.sectionId)) || 
+                              f.assignedSectionIds?.some((sid: string) => batchSecIds.includes(sid)) ||
+                              batchSecIds.includes(f.sectionId) ||
+                              f.batchId === monitoringBatchFilter;
+      if (!hasBatchMapping) return false;
+    }
+
+    if (monitoringSectionFilter) {
+      const hasSectionMapping = f.assignedSectionMappings?.some((m: any) => m.sectionId === monitoringSectionFilter) ||
+                                f.assignedSectionIds?.includes(monitoringSectionFilter) ||
+                                f.sectionId === monitoringSectionFilter;
+      if (!hasSectionMapping) return false;
+    }
+
     const q = facultySearch.toLowerCase();
     return !q ||
       (f.name || '').toLowerCase().includes(q) ||
@@ -1768,6 +1908,20 @@ function MonitoringTab({ faculties, students, sections, batches, onRefresh }: {
 
   // ── Student filter ────────────────────────────────────────────────────────
   const filteredStudents = students.filter((s: any) => {
+    if (monitoringBatchFilter) {
+      const batObj = batches.find(b => b.id === monitoringBatchFilter);
+      const isMatch = s.batchId === monitoringBatchFilter || 
+                      (batObj && (s.batch === batObj.year || s.batch === batObj.name));
+      if (!isMatch) return false;
+    }
+
+    if (monitoringSectionFilter) {
+      const secObj = sections.find(sec => sec.id === monitoringSectionFilter);
+      const isMatch = s.sectionId === monitoringSectionFilter ||
+                      (secObj && s.section?.toLowerCase() === secObj.name?.toLowerCase());
+      if (!isMatch) return false;
+    }
+
     if (selectedSectionFilter) {
       const sSec = String(s.section || s.sectionName || s.sectionId || '').toLowerCase();
       const targetSec = selectedSectionFilter.toLowerCase();
@@ -1889,6 +2043,47 @@ function MonitoringTab({ faculties, students, sections, batches, onRefresh }: {
               }`}>{count}</span>
             </button>
           ))}
+        </div>
+
+        {/* Batch & Section Dropdown Filters */}
+        <div className="p-4 border-b border-slate-100 bg-slate-50/50 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Select Batch</label>
+            <select
+              value={monitoringBatchFilter}
+              onChange={e => {
+                setMonitoringBatchFilter(e.target.value);
+                setMonitoringSectionFilter('');
+              }}
+              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
+            >
+              <option value="">— All Batches —</option>
+              {batches.map(b => (
+                <option key={b.id} value={b.id}>{b.name} ({b.year})</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Select Section</label>
+            <select
+              value={monitoringSectionFilter}
+              onChange={e => setMonitoringSectionFilter(e.target.value)}
+              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
+            >
+              <option value="">— All Sections —</option>
+              {sections
+                .filter(s => !monitoringBatchFilter || s.batchId === monitoringBatchFilter)
+                .map(s => {
+                  const bat = batches.find(b => b.id === s.batchId);
+                  return (
+                    <option key={s.id} value={s.id}>
+                      Section {s.name} {bat ? `(${bat.name})` : ''}
+                    </option>
+                  );
+                })}
+            </select>
+          </div>
         </div>
 
         {/* ── FACULTY MONITORING ───────────────────────────────────────────── */}
@@ -2225,6 +2420,162 @@ function MonitoringTab({ faculties, students, sections, batches, onRefresh }: {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+//  TAB 7 — ADMIN PROFILE & PASSWORD CHANGE
+// ═══════════════════════════════════════════════════════════════════════════════
+function AdminProfileTab({ user, token, authFetch }: { user: any; token: string; authFetch: any }) {
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      setErrorMsg('All fields are required.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setErrorMsg('New password and confirm password do not match.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setErrorMsg('New password must be at least 6 characters long.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await authFetch('/api/admin/password', {
+        method: 'POST',
+        body: JSON.stringify({ oldPassword, newPassword }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSuccessMsg('Your password has been successfully updated.');
+        setOldPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        setErrorMsg(data.error || 'Failed to update password. Verify current password.');
+      }
+    } catch (err) {
+      setErrorMsg('Network error occurred. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
+      {/* Profile Overview Card */}
+      <div className="lg:col-span-1 bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-6">
+        <div className="text-center space-y-3">
+          <div className="w-20 h-20 bg-indigo-50 border-4 border-indigo-150 rounded-full flex items-center justify-center mx-auto text-indigo-600 shadow-inner">
+            <User className="w-10 h-10" />
+          </div>
+          <div>
+            <h3 className="font-extrabold text-slate-800 text-lg">{user.name === 'Super Admin' ? 'PEC Admin' : user.name}</h3>
+            <p className="text-xs text-indigo-600 font-extrabold uppercase tracking-wider mt-0.5">{user.role}</p>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 pt-5 space-y-3 text-xs">
+          <div className="flex justify-between items-center py-1">
+            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Portal Username</span>
+            <strong className="text-slate-700 font-mono">{user.email || user.username}</strong>
+          </div>
+          <div className="flex justify-between items-center py-1">
+            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Institution</span>
+            <strong className="text-slate-700 text-right">Panimalar Engineering College</strong>
+          </div>
+          <div className="flex justify-between items-center py-1">
+            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Department</span>
+            <strong className="text-slate-700 text-right">Artificial Intelligence & Data Science</strong>
+          </div>
+          <div className="flex justify-between items-center py-1">
+            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Portal Access Level</span>
+            <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded-full border border-indigo-200/50">
+              {user.role === 'Admin' ? 'Superuser' : 'Department HOD'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Change Password Card */}
+      <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
+        <h3 className="font-extrabold text-slate-800 text-base mb-2">Change Account Password</h3>
+        <p className="text-xs text-slate-400 mb-6">Update your secure access credentials. Password updates apply instantly.</p>
+
+        <form onSubmit={handlePasswordChange} className="space-y-4 max-w-md">
+          {errorMsg && (
+            <div className="p-3.5 bg-rose-50 border border-rose-200/80 rounded-2xl text-xs text-rose-700 font-bold flex items-center gap-2 animate-shake">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {successMsg && (
+            <div className="p-3.5 bg-emerald-50 border border-emerald-250/80 rounded-2xl text-xs text-emerald-800 font-bold flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{successMsg}</span>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Current Password</label>
+            <input
+              type="password"
+              value={oldPassword}
+              onChange={(e) => setOldPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">New Password</label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Minimum 6 characters"
+              required
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Confirm New Password</label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Confirm new password"
+              required
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-6 py-2.5 bg-[#0B192C] hover:bg-slate-850 disabled:opacity-50 text-white text-xs font-black rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm uppercase tracking-wider"
+          >
+            {loading ? 'Saving Changes...' : 'Save Password'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 const TABS = [
@@ -2234,6 +2585,7 @@ const TABS = [
   { id: 'access',     label: 'Faculty Access',      icon: Shield },
   { id: 'monitor',    label: 'Live Monitoring',     icon: Activity },
   { id: 'notify',     label: 'Notifications',       icon: Bell },
+  { id: 'profile',    label: 'Admin Profile',       icon: User },
 ];
 
 export default function AdminDashboard() {
@@ -2293,13 +2645,13 @@ export default function AdminDashboard() {
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="px-3 py-1 bg-indigo-500/20 text-indigo-300 text-[10px] font-bold rounded-full uppercase tracking-widest border border-indigo-500/30">
-              Admin Portal
+              HOD Portal
             </span>
             <h1 className="text-2xl md:text-3xl font-black mt-2 tracking-tight">
-              Admin Dashboard
+              HOD Dashboard
             </h1>
             <p className="text-xs text-slate-300 mt-1 font-medium">
-              Welcome, <span className="text-indigo-300 font-extrabold">{user.name}</span> · Academic Year 2026–2027
+              Welcome, <span className="text-indigo-300 font-extrabold">{user.name === 'Super Admin' ? 'HOD' : user.name}</span> · Academic Year 2026–2027
             </p>
           </div>
           <div className="flex items-center gap-3 bg-white/5 border border-white/10 px-4 py-3 rounded-2xl">
@@ -2316,22 +2668,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ── Tab Nav ──────────────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-1.5 flex flex-wrap gap-1">
-        {TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setActiveTab(id)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer flex-1 min-w-[120px] justify-center
-              ${activeTab === id
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'}`}
-          >
-            <Icon className="w-3.5 h-3.5" />
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* Tab navigation is now handled column-wise in the sidebar menu */}
 
       {/* ── Content ──────────────────────────────────────────────────────────── */}
       {loading && activeTab !== 'notify' ? (
@@ -2354,6 +2691,7 @@ export default function AdminDashboard() {
           )}
           {activeTab === 'monitor'   && <MonitoringTab faculties={faculties} students={students} sections={sections} batches={batches} onRefresh={async () => { await refreshData(); await loadBatchesAndSections(); }} />}
           {activeTab === 'notify'    && <NotificationsTab batches={batches} token={token} />}
+          {activeTab === 'profile'   && <AdminProfileTab user={user} token={token} authFetch={authFetch} />}
         </>
       )}
     </div>

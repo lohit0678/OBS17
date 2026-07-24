@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAcademicData } from '../context/AcademicDataContext';
 import { MetricCard, RiskBadge } from '../components/shared';
+import { getSubjectShortForm } from './AdminDashboard';
 import {
   Percent,
   Award,
@@ -47,7 +48,7 @@ export default function StudentDashboard() {
   const { tab = 'dashboard' } = useParams<{ tab: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { getStudentData, getFacultyData, submitLabExperiment, submitAssignment } = useAcademicData();
+  const { getStudentData, getFacultyData, submitLabExperiment, submitAssignment, faculties = [] } = useAcademicData();
 
   const student = getStudentData(user.id);
   const advisor = student ? getFacultyData(student.facultyId) : null;
@@ -253,7 +254,7 @@ export default function StudentDashboard() {
             <span className="text-indigo-600">ERP Terminal</span>
           </h1>
           <p className="text-sm text-slate-500 font-medium mt-1">
-            Logged in as: <strong className="text-slate-800">{student.name}</strong> ({student.registerNo}) &bull; Semester: {student.semester}
+            Logged in as: <strong className="text-slate-800">{student.name}</strong> ({student.registerNo}) &bull; Semester: {student.semester} &bull; Year: {student.year || 'II'}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -280,6 +281,125 @@ export default function StudentDashboard() {
       {/* RENDER THE REQUESTED TAB VIEW */}
       {tab === 'dashboard' && (
         <div className="space-y-6">
+          {/* Lab Observation Timetable Reminder Alert */}
+          {(() => {
+            const studentSectionName = student.section || student.sectionId || '';
+            const myFacultyList = faculties.filter((f: any) => {
+              const mappings = f.assignedSectionMappings || [];
+              const isSectionAssigned = mappings.some((m: any) => m.sectionId === studentSectionName || m.sectionName?.toLowerCase() === studentSectionName.toLowerCase());
+              const isDirectSection = f.sectionId === studentSectionName || f.section === studentSectionName;
+              const isSectionInIds = Array.isArray(f.assignedSectionIds) && f.assignedSectionIds.includes(studentSectionName);
+              return isSectionAssigned || isDirectSection || isSectionInIds || f.id === student.facultyId || f.email?.toLowerCase() === student.facultyId?.toLowerCase();
+            });
+
+            const daysShort = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+            const currentDayCode = daysShort[new Date().getDay()];
+
+            const PANIMALAR_FULL_MATRIX: Record<string, {
+              labDay: string;
+              labPeriod: string;
+              labTag: string;
+            }> = {
+              KIES: { labDay: 'FRI', labPeriod: 'Period 2 & 3 Morning Lab Slot (8.50 AM - 10.30 AM)', labTag: 'KIES LAB' },
+              DA: { labDay: 'TUE', labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)', labTag: 'DA LAB' },
+              DEV: { labDay: 'THU', labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)', labTag: 'DEV LAB' },
+              TSP: { labDay: 'MON', labPeriod: 'Morning Lab Slot (10.45 AM - 12.40 PM)', labTag: 'TSP 4 LAB' }
+            };
+
+            const resolveShort = (name?: string, code?: string): string => {
+              const c = (code || '').toUpperCase();
+              const n = (name || '').toUpperCase();
+              if (c.includes('KIES') || n.includes('KIES') || n.includes('EASY')) return 'KIES';
+              if (c.includes('DA') || n.includes('DATA ANALYSIS') || n.includes('DA ')) return 'DA';
+              if (c.includes('DEV') || n.includes('DEVELOPMENT') || n.includes('DEV ')) return 'DEV';
+              if (c.includes('TSP') || n.includes('TSP') || n.includes('TSP ')) return 'TSP';
+              return 'KIES';
+            };
+
+            const activeLabSlots: any[] = [];
+            const todayDayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+            const todayDateStr = new Date().toLocaleDateString('en-GB');
+
+            myFacultyList.forEach((fac: any) => {
+              // 1. Check if faculty has the analyzed labDay stored in their database profile
+              if (fac.labDay && fac.labDay.toLowerCase() === todayDayName.toLowerCase()) {
+                activeLabSlots.push({
+                  subjectName: fac.subjectName || (Array.isArray(fac.subjectsHandled) && fac.subjectsHandled[0]) || 'General Lab',
+                  subjectCode: fac.subjectCode || '',
+                  period: fac.labPeriod,
+                  time: fac.labTime || 'Morning Lab Slot',
+                  day: fac.labDay,
+                  date: todayDateStr,
+                  facultyName: fac.name || fac.email,
+                  labTag: getSubjectShortForm(fac.subjectName || (Array.isArray(fac.subjectsHandled) && fac.subjectsHandled[0]), fac.subjectShortForm, fac.subjectCode) + ' LAB'
+                });
+                return;
+              }
+
+              // 2. Fallback to localStorage or default matrix check
+              const key = `faculty_timetable_${fac.id}_${studentSectionName}`;
+              const keyEmail = `faculty_timetable_${fac.email}_${studentSectionName}`;
+              const val = localStorage.getItem(key) || localStorage.getItem(keyEmail) || localStorage.getItem(`faculty_timetable_${fac.id}`) || localStorage.getItem(`faculty_timetable_${fac.email}`);
+              if (val) {
+                try {
+                  const parsed = JSON.parse(val);
+                  const sf = resolveShort(parsed.subjectName, parsed.subjectCode);
+                  const matrix = PANIMALAR_FULL_MATRIX[sf] || PANIMALAR_FULL_MATRIX['KIES'];
+                  const matrixDayName = matrix.labDay === 'FRI' ? 'Friday' :
+                                        matrix.labDay === 'TUE' ? 'Tuesday' :
+                                        matrix.labDay === 'THU' ? 'Thursday' :
+                                        matrix.labDay === 'MON' ? 'Monday' : '';
+                  if (matrixDayName.toLowerCase() === todayDayName.toLowerCase()) {
+                    activeLabSlots.push({
+                      subjectName: parsed.subjectName || fac.subjectName || 'General Lab',
+                      subjectCode: parsed.subjectCode || fac.subjectCode || '',
+                      period: parsed.period || matrix.labPeriod,
+                      time: matrix.labPeriod.includes('(') ? matrix.labPeriod.split('(')[1].replace(')', '') : 'Morning Lab Slot',
+                      day: todayDayName,
+                      date: todayDateStr,
+                      facultyName: fac.name || fac.email,
+                      labTag: matrix.labTag
+                    });
+                  }
+                } catch { /* silent */ }
+              }
+            });
+
+            if (activeLabSlots.length === 0) return null;
+
+            return (
+              <div className="space-y-3 mb-2">
+                {activeLabSlots.map((slot, idx) => (
+                  <div key={idx} className="p-4 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-indigo-500/10 border border-amber-350 rounded-3xl flex items-center justify-between gap-4 shadow-sm animate-pulse-slow">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-amber-500 text-white rounded-2xl flex items-center justify-center font-black shrink-0 shadow-md">
+                        🧪
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider">Today's Lab Observation Reminder:</span>
+                          <span className="px-2 py-0.2 bg-amber-100 text-amber-850 border border-amber-200/50 text-[9px] font-extrabold rounded-md uppercase">{slot.labTag}</span>
+                        </div>
+                        <h4 className="text-sm font-black text-slate-800 mt-0.5">
+                          {slot.subjectName} {slot.subjectCode ? `(${slot.subjectCode})` : ''}
+                        </h4>
+                        <p className="text-[10px] text-slate-600 mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span>📅 Day: <strong className="text-slate-800 font-extrabold">{slot.day}</strong></span>
+                          <span>&bull;</span>
+                          <span>🗓️ Date: <strong className="text-slate-800 font-extrabold">{slot.date}</strong></span>
+                          <span>&bull;</span>
+                          <span>⏰ Time: <strong className="text-slate-800 font-extrabold">{slot.time}</strong></span>
+                          <span>&bull;</span>
+                          <span>🎓 Faculty: <strong className="text-slate-800 font-extrabold">{slot.facultyName}</strong></span>
+                        </p>
+                      </div>
+                    </div>
+                    <span className="px-3 py-1 bg-amber-500 text-white border border-amber-400 rounded-xl font-extrabold text-[10px] uppercase shrink-0 hidden sm:inline-block">Scheduled Today</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
           {/* Quick Metrics */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
             <MetricCard
@@ -470,7 +590,7 @@ export default function StudentDashboard() {
             </div>
             <div className="text-center md:text-left space-y-1">
               <h2 className="text-2xl font-bold text-slate-900">{student.name}</h2>
-              <p className="text-indigo-600 font-semibold text-sm">{student.registerNo} &bull; Roll No: {student.rollNo}</p>
+              <p className="text-indigo-600 font-semibold text-sm">{student.registerNo} &bull; Roll No: {(student.rollNo || '').replace(/\s+/g, '').toUpperCase()}</p>
               <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">{student.department}</p>
             </div>
           </div>
@@ -486,6 +606,10 @@ export default function StudentDashboard() {
                 <div className="flex justify-between py-2 border-b border-slate-50 text-xs">
                   <span className="text-slate-500 font-medium">Semester</span>
                   <span className="text-slate-800 font-bold">{student.semester}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-slate-50 text-xs">
+                  <span className="text-slate-500 font-medium">Academic Year</span>
+                  <span className="text-slate-800 font-bold">{student.year || 'II'}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-slate-50 text-xs">
                   <span className="text-slate-500 font-medium">Section / Group</span>
@@ -1220,17 +1344,22 @@ export default function StudentDashboard() {
               <div className="space-y-3">
                 {student.calendarEvents.map((evt) => (
                   <div key={evt.id} className="flex items-start gap-4 p-4 border border-slate-100 rounded-2xl bg-white hover:bg-slate-50 transition">
-                    <div className={`p-2.5 rounded-xl text-white font-bold text-xs uppercase text-center w-14 shrink-0 ${
+                    <div className={`p-2 rounded-xl text-white font-bold text-xs uppercase text-center w-14 shrink-0 flex flex-col justify-center ${
                       evt.type === 'exam' ? 'bg-rose-600' :
                       evt.type === 'session' ? 'bg-emerald-600' :
                       evt.type === 'holiday' ? 'bg-sky-600' : 'bg-amber-600'
                     }`}>
-                      {evt.date.slice(-2)} {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][parseInt(evt.date.split('-')[1]) - 1]}
+                      <div>{evt.date.slice(-2)} {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][parseInt(evt.date.split('-')[1]) - 1]}</div>
+                      <div className="text-[8px] opacity-90 font-black uppercase tracking-wider mt-0.5 border-t border-white/20 pt-0.5 leading-none">
+                        {new Date(evt.date).toLocaleDateString('en-US', { weekday: 'short' })}
+                      </div>
                     </div>
                     <div>
                       <h5 className="font-extrabold text-slate-800 text-sm">{evt.title}</h5>
                       <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{evt.description}</p>
-                      <p className="text-[10px] text-slate-400 font-bold mt-1.5 uppercase">Schedule: {evt.date}</p>
+                      <p className="text-[10px] text-slate-400 font-bold mt-1.5 uppercase">
+                        Schedule: {new Date(evt.date).toLocaleDateString('en-GB')} ({new Date(evt.date).toLocaleDateString('en-US', { weekday: 'long' })})
+                      </p>
                     </div>
                   </div>
                 ))}

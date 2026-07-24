@@ -19,6 +19,7 @@ interface AcademicDataContextType {
   sendNotification: (type: 'announcement' | 'circular' | 'schedule' | 'deadline' | 'exam', title: string, message: string, sender: string, targetBatch?: string) => void;
   evaluateDirect: (studentId: string, experimentIndex: number, action: 'observation_only' | 'both' | 'record_only', subjectCode?: string, subjectName?: string) => Promise<void>;
   updateSignoff: (studentId: string, experimentIndex: number, fields: { observationStatus?: 'none' | 'tick' | 'cross'; observationMarks?: number | string; recordStatus?: 'none' | 'tick' | 'cross'; subjectCode?: string; subjectName?: string }) => Promise<void>;
+  updateBatchSignoff: (items: { studentId: string; experimentIndex: number; observationStatus?: 'none' | 'tick' | 'cross'; observationMarks?: number | string; recordStatus?: 'none' | 'tick' | 'cross' }[], subjectCode?: string, subjectName?: string) => Promise<void>;
   updateStudentRisk: (studentId: string, riskFlagged: boolean, riskReason?: string) => Promise<void>;
   uploadFile: (file: File) => Promise<{ success: boolean; fileUrl?: string; error?: string }>;
   queryAI: (prompt: string, context?: string) => Promise<{ success: boolean; response?: string; error?: string }>;
@@ -43,18 +44,25 @@ const AcademicDataContext = createContext<AcademicDataContextType | undefined>(u
 
 export function AcademicDataProvider({ children }: { children: ReactNode }) {
   const [students, setStudents] = useState<Student[]>([]);
-  const [faculties, setFaculties] = useState<Faculty[]>([]);
+  const [rawFaculties, setRawFaculties] = useState<Faculty[]>([]);
   const [loading, setLoading] = useState(true);
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    return (localStorage.getItem('app_theme') as 'light' | 'dark') || 'light';
-  });
-  const { getAuthHeaders, user, updateProfilePic: authUpdateProfilePic } = useAuth();
 
-  const toggleTheme = () => {
-    const nextTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(nextTheme);
-    localStorage.setItem('app_theme', nextTheme);
-  };
+  // Deduplicate faculties by email to ensure unique monitoring and profiles
+  const faculties = React.useMemo(() => {
+    const seen = new Set();
+    return rawFaculties.filter(f => {
+      const email = (f.email || '').toLowerCase().trim();
+      if (!email) return true;
+      if (seen.has(email)) return false;
+      seen.add(email);
+      return true;
+    });
+  }, [rawFaculties]);
+
+  const setFaculties = setRawFaculties;
+  const theme = 'light';
+  const toggleTheme = () => {};
+  const { getAuthHeaders, user, updateProfilePic: authUpdateProfilePic } = useAuth();
 
   const authFetch = async (url: string, options: RequestInit = {}) => {
     const headers = getAuthHeaders();
@@ -316,6 +324,31 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
       }
     } catch (err) {
       console.error("Failed to update student signoff on server:", err);
+    }
+  };
+
+  const updateBatchSignoff = async (
+    items: {
+      studentId: string;
+      experimentIndex: number;
+      observationStatus?: 'none' | 'tick' | 'cross';
+      observationMarks?: number | string;
+      recordStatus?: 'none' | 'tick' | 'cross';
+    }[],
+    subjectCode?: string,
+    subjectName?: string
+  ) => {
+    try {
+      const res = await authFetch("/api/academic/evaluation/update-signoff/batch", {
+        method: "POST",
+        body: JSON.stringify({ items, subjectCode, subjectName }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStudents(data.students);
+      }
+    } catch (err) {
+      console.error("Failed to update batch signoff on server:", err);
     }
   };
 
@@ -701,6 +734,7 @@ export function AcademicDataProvider({ children }: { children: ReactNode }) {
         sendNotification,
         evaluateDirect,
         updateSignoff,
+        updateBatchSignoff,
         updateStudentRisk,
         uploadFile,
         queryAI,

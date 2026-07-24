@@ -296,7 +296,7 @@ export default function FacultyStudents() {
     doc.text(`Document Type:   ${type.toUpperCase()} NOTEBOOK`, 110, y + 19);
     doc.text(`Evaluation:          ${statusVal}`, 110, y + 25);
     doc.text(`Awarded Score:   ${reviewScore} / 10 Marks`, 110, y + 31);
-    doc.text(`Review Date:       ${new Date().toLocaleDateString()}`, 110, y + 37);
+    doc.text(`Review Date:       ${new Date().toLocaleDateString('en-GB')}`, 110, y + 37);
     
     // Remarks (wrap text for small box width)
     const remarksWrapped = doc.splitTextToSize(`Remarks: ${reviewRemarks || 'Verified and approved.'}`, 80);
@@ -1075,30 +1075,30 @@ export default function FacultyStudents() {
             </div>
 
             {/* Table */}
-            <div className="overflow-x-auto">
+            <div className="overflow-auto max-h-[calc(100vh-260px)] min-h-[420px] relative rounded-2xl border border-slate-700/50">
               <table className="w-full min-w-[950px] border-collapse text-left">
-                <thead>
+                <thead className="sticky top-0 z-30 shadow-sm">
                   <tr className="bg-[#0B192C] text-white border-b border-slate-700 text-[10px] uppercase font-bold tracking-wider">
-                    <th rowSpan={2} className="px-4 py-3 border-r border-slate-700 w-16 text-center align-middle">Roll No</th>
-                    <th rowSpan={2} className="px-5 py-3 border-r border-slate-700 min-w-[180px] align-middle">Student Name</th>
-                    <th rowSpan={2} className="px-4 py-3 border-r border-slate-700 w-36 align-middle">Observation or Record</th>
-                    <th colSpan={4} className="px-2 py-1.5 text-center border-r border-slate-700 bg-slate-800/40 font-extrabold text-[11px]">
+                    <th rowSpan={2} className="sticky top-0 left-0 z-40 bg-[#0B192C] px-4 py-3 border-r border-slate-700 w-16 text-center align-middle">Roll No</th>
+                    <th rowSpan={2} className="sticky top-0 left-[65px] z-40 bg-[#0B192C] px-5 py-3 border-r border-slate-700 min-w-[180px] align-middle">Student Name</th>
+                    <th rowSpan={2} className="sticky top-0 left-[245px] z-40 bg-[#0B192C] px-4 py-3 border-r border-slate-700 w-36 align-middle">Observation or Record</th>
+                    <th colSpan={4} className="sticky top-0 z-30 px-2 py-1.5 text-center border-r border-slate-700 bg-slate-800/90 font-extrabold text-[11px]">
                       Week 1
                     </th>
-                    <th colSpan={4} className="px-2 py-1.5 text-center border-r border-slate-700 bg-slate-800/40 font-extrabold text-[11px]">
+                    <th colSpan={4} className="sticky top-0 z-30 px-2 py-1.5 text-center border-r border-slate-700 bg-slate-800/90 font-extrabold text-[11px]">
                       Week 2
                     </th>
-                    <th colSpan={4} className="px-2 py-1.5 text-center bg-slate-800/40 font-extrabold text-[11px]">
+                    <th colSpan={4} className="sticky top-0 z-30 px-2 py-1.5 text-center bg-slate-800/90 font-extrabold text-[11px]">
                       Week 3
                     </th>
                   </tr>
                   <tr className="bg-[#122238] text-indigo-200 border-b border-slate-700 text-[9px] font-extrabold tracking-wider text-center">
                     {[1, 2, 3].map((week) => (
                       <React.Fragment key={week}>
-                        <th className="px-1 py-1.5 border-r border-slate-700 w-10">E1</th>
-                        <th className="px-1 py-1.5 border-r border-slate-700 w-10">E2</th>
-                        <th className="px-1 py-1.5 border-r border-slate-700 w-10">E3</th>
-                        <th className="px-1 py-1.5 border-r border-slate-700 w-10">E4</th>
+                        <th className="sticky top-[35px] z-30 bg-[#122238] px-1 py-1.5 border-r border-slate-700 w-10">E1</th>
+                        <th className="sticky top-[35px] z-30 bg-[#122238] px-1 py-1.5 border-r border-slate-700 w-10">E2</th>
+                        <th className="sticky top-[35px] z-30 bg-[#122238] px-1 py-1.5 border-r border-slate-700 w-10">E3</th>
+                        <th className="sticky top-[35px] z-30 bg-[#122238] px-1 py-1.5 border-r border-slate-700 w-10">E4</th>
                       </React.Fragment>
                     ))}
                   </tr>
@@ -1553,7 +1553,7 @@ export default function FacultyStudents() {
                   </div>
                   <div>
                     <p className="text-slate-500 font-bold uppercase text-[9px]">Semester & Batch</p>
-                    <p className="text-slate-800 font-bold">Sem {selectedStudent.semester} / {selectedStudent.batch}</p>
+                    <p className="text-slate-800 font-bold">Sem {selectedStudent.semester} / Year {selectedStudent.year || 'II'} / {selectedStudent.batch}</p>
                   </div>
                   <div className="col-span-2 border-t border-slate-200 pt-2 mt-1">
                     <p className="text-slate-500 font-bold uppercase text-[9px]">Assigned Course Lab</p>

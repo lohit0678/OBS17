@@ -291,7 +291,7 @@ export default function FacultyStudents() {
     doc.text(`Document Type:   ${type.toUpperCase()} NOTEBOOK`, 110, y + 19);
     doc.text(`Evaluation:          ${statusVal}`, 110, y + 25);
     doc.text(`Awarded Score:   ${reviewScore} / 10 Marks`, 110, y + 31);
-    doc.text(`Review Date:       ${new Date().toLocaleDateString()}`, 110, y + 37);
+    doc.text(`Review Date:       ${new Date().toLocaleDateString('en-GB')}`, 110, y + 37);
     
     // Remarks (wrap text for small box width)
     const remarksWrapped = doc.splitTextToSize(`Remarks: ${reviewRemarks || 'Verified and approved.'}`, 80);
@@ -1548,7 +1548,7 @@ export default function FacultyStudents() {
                   </div>
                   <div>
                     <p className="text-slate-500 font-bold uppercase text-[9px]">Semester & Batch</p>
-                    <p className="text-slate-800 font-bold">Sem {selectedStudent.semester} / {selectedStudent.batch}</p>
+                    <p className="text-slate-800 font-bold">Sem {selectedStudent.semester} / Year {selectedStudent.year || 'II'} / {selectedStudent.batch}</p>
                   </div>
                   <div className="col-span-2 border-t border-slate-200 pt-2 mt-1">
                     <p className="text-slate-500 font-bold uppercase text-[9px]">Assigned Course Lab</p>

@@ -19,7 +19,7 @@ import { SectionModel } from "./db/models/Section.js";
 import { SubjectModel } from "./db/models/Subject.js";
 import http from "http";
 import { Server as SocketIOServer } from "socket.io";
-import { authMiddleware, requireRole, AuthRequest } from "./middleware/auth.js";
+import { authMiddleware, requireRole, AuthRequest } from "./backend/middleware/auth.js";
 import { AttendanceRecordModel } from "./db/models/AttendanceRecord.js";
 import { LabExperimentModel } from "./db/models/LabExperiment.js";
 import { AssignmentModel } from "./db/models/Assignment.js";
@@ -138,8 +138,19 @@ function recalcRisk(student: any): { attendance: number; riskFlagged: boolean; r
 }
 
 async function getAllStudents() {
-  const students: any[] = await (StudentModel as any).find({}).lean();
+  let students: any[] = [];
   try {
+    students = await (StudentModel as any).find({}).lean();
+  } catch (err: any) {
+    if (err?.name === 'MongoNetworkError' || err?.code === 'ECONNRESET') {
+      console.warn("[MongoDB] Transient network error while fetching students, retrying query once...");
+      students = await (StudentModel as any).find({}).lean();
+    } else {
+      throw err;
+    }
+  }
+
+  const mergeAttendance = async (studentList: any[]) => {
     const records: any[] = await (AttendanceRecordModel as any).find({}).lean();
     if (records.length > 0) {
       const recordsByStudent: Record<string, any[]> = {};
@@ -149,7 +160,7 @@ async function getAllStudents() {
         recordsByStudent[rec.studentId].push(rec);
       }
 
-      for (const student of students) {
+      for (const student of studentList) {
         const studentRecs = recordsByStudent[student.id] || [];
         if (studentRecs.length > 0) {
           if (!student.attendanceHistory) student.attendanceHistory = [];
@@ -181,9 +192,23 @@ async function getAllStudents() {
         }
       }
     }
-  } catch (err) {
-    console.error("Error merging attendance records in getAllStudents:", err);
+  };
+
+  try {
+    await mergeAttendance(students);
+  } catch (err: any) {
+    if (err?.name === 'MongoNetworkError' || err?.code === 'ECONNRESET') {
+      console.warn("[MongoDB] Connection reset during attendance merge, retrying query once...");
+      try {
+        await mergeAttendance(students);
+      } catch (retryErr) {
+        console.error("Error merging attendance records in getAllStudents after retry:", retryErr);
+      }
+    } else {
+      console.error("Error merging attendance records in getAllStudents:", err);
+    }
   }
+
   return students;
 }
 
@@ -191,10 +216,59 @@ async function getAllFaculties() {
   return (FacultyModel as any).find({}).lean();
 }
 
+async function syncStudentsSectionBatch() {
+  try {
+    console.log("[Data Sync] Running check to ensure students' denormalized section & batch names are in sync...");
+    const sections: any[] = await (SectionModel as any).find({}).lean();
+    const batches: any[] = await (BatchModel as any).find({}).lean();
+    const students: any[] = await (StudentModel as any).find({}).lean();
+
+    const sectionsMap = new Map(sections.map(s => [s.id, s]));
+    const batchesMap = new Map(batches.map(b => [b.id, b]));
+
+    let syncCount = 0;
+    for (const student of students) {
+      const section = sectionsMap.get(student.sectionId);
+      const batch = batchesMap.get(student.batchId);
+
+      let needsUpdate = false;
+      const updates: any = {};
+
+      if (section && student.section !== section.name) {
+        updates.section = section.name;
+        needsUpdate = true;
+      }
+      if (batch) {
+        if (student.batch !== batch.name) {
+          updates.batch = batch.name;
+          needsUpdate = true;
+        }
+        if (student.department !== batch.department) {
+          updates.department = batch.department;
+          needsUpdate = true;
+        }
+      }
+
+      if (needsUpdate) {
+        await (StudentModel as any).updateOne({ _id: student._id }, { $set: updates });
+        syncCount++;
+      }
+    }
+    if (syncCount > 0) {
+      console.log(`[Data Sync] ✅ Successfully synced section/batch properties for ${syncCount} students.`);
+    } else {
+      console.log("[Data Sync] All students' section and batch properties are already in sync.");
+    }
+  } catch (err) {
+    console.error("[Data Sync] Error running section/batch sync:", err);
+  }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 async function startServer() {
   // 1. Connect to MongoDB
   await connectDB();
+  await syncStudentsSectionBatch();
 
 
   const app = express();
@@ -242,6 +316,42 @@ async function startServer() {
 
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: true }));
+
+  // ─── IP Whitelist Middleware for College Network Security ────────────────────
+  const allowedIpPrefixes = (process.env.ALLOWED_COLLEGE_IPS || "")
+    .split(",")
+    .map(ip => ip.trim())
+    .filter(Boolean);
+
+  if (allowedIpPrefixes.length > 0) {
+    console.log(`[IP Security] Enforcing access restriction for College IP prefixes: ${allowedIpPrefixes.join(", ")}`);
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      const rawIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "";
+      const clientIp = rawIp.split(",")[0].trim().replace(/^.*:/, "");
+
+      const isAllowed =
+        clientIp === "127.0.0.1" ||
+        clientIp === "localhost" ||
+        allowedIpPrefixes.some(prefix => clientIp.startsWith(prefix));
+
+      if (!isAllowed) {
+        console.warn(`[IP Security] Blocked unauthorized access attempt from non-college IP: ${clientIp}`);
+        return res.status(403).send(`
+          <div style="font-family: system-ui, sans-serif; text-align: center; padding: 60px 20px; background-color: #f8fafc; min-height: 100vh;">
+            <div style="max-width: 480px; margin: 0 auto; background: white; padding: 40px; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
+              <h2 style="color: #e11d48; margin-bottom: 12px; font-weight: 800;">🔒 College Network Access Required</h2>
+              <p style="color: #475569; font-size: 14px; line-height: 1.6;">This portal is configured to be accessible only within authorized college premises and network IP addresses.</p>
+              <div style="margin-top: 24px; padding: 12px; background: #fff1f2; border-radius: 12px; border: 1px solid #fecdd3;">
+                <p style="color: #9f1239; font-size: 12px; font-weight: 700; margin: 0;">Your Device IP Address: ${clientIp}</p>
+              </div>
+            </div>
+          </div>
+        `);
+      }
+      next();
+    });
+  }
+
   app.use("/uploads", express.static(path.join(currentDirname, "uploads")));
 
   // ─── Global error handler ─────────────────────────────────────────────────
@@ -277,7 +387,7 @@ async function startServer() {
         if (match || password === "admin@ds123" || password === "Hod@Admin123") {
           const role = "Admin";
           const id = admin.username === "admin" ? "ADM01" : "HOD01";
-          const name = admin.username === "admin" ? "Super Admin" : "Dr. Rajesh Sharma";
+          const name = admin.name || (admin.username === "admin" ? "Super Admin" : "Dr. Rajesh Sharma");
           const token = signToken({ id, role, email: admin.username, name });
           return res.json({
             user: { isAuthenticated: true, token, role, name, email: admin.username, id, profilePic: "" },
@@ -528,7 +638,10 @@ async function startServer() {
         const batch       = findCol(row, colMap.batch) || defaultBatch;
         const sectionName = findCol(row, colMap.sectionName);
         const studentName = findCol(row, colMap.studentName);
-        const rollNo      = findCol(row, colMap.rollNo);
+        let rollNo      = findCol(row, colMap.rollNo);
+        if (rollNo) {
+          rollNo = rollNo.replace(/\s+/g, '').toUpperCase();
+        }
         const registerNo  = findCol(row, colMap.registerNo);
         const phoneNumber = findCol(row, colMap.phoneNumber);
 
@@ -1319,6 +1432,37 @@ async function startServer() {
   });
 
   // ===========================================================================
+  // HOD: UPDATE ADMIN / HOD PROFILE
+  // ===========================================================================
+  app.put("/api/admin/profile", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      if (req.user?.role !== "HOD" && req.user?.role !== "Admin") {
+        return res.status(403).json({ error: "Unauthorized. Only HOD can update profile." });
+      }
+      const { name } = req.body;
+      if (!name || !name.trim()) {
+        return res.status(400).json({ error: "Profile name is required." });
+      }
+
+      const trimmedName = name.trim();
+      let admin: any = await (AdminModel as any).findOne({ username: req.user.email });
+      if (!admin) {
+        admin = await (AdminModel as any).findOne();
+      }
+
+      if (admin) {
+        admin.name = trimmedName;
+        await admin.save();
+      }
+
+      res.json({ success: true, name: trimmedName, message: "HOD Profile name updated successfully" });
+    } catch (err: any) {
+      console.error("[Update HOD Profile Error]", err);
+      res.status(500).json({ error: err.message || "Failed to update profile name" });
+    }
+  });
+
+  // ===========================================================================
   // ACADEMIC: SINGLE FACULTY
   // ===========================================================================
   app.get("/api/academic/faculty/:facultyId", authMiddleware, async (req, res) => {
@@ -1347,7 +1491,11 @@ async function startServer() {
         updates.subjectsHandled = [updates.subjectName];
       }
 
-      const faculty = await (FacultyModel as any).findOneAndUpdate({ id: facultyId }, { $set: updates }, { returnDocument: "after" }).lean();
+      const faculty = await (FacultyModel as any).findOneAndUpdate(
+        { $or: [{ id: facultyId }, { email: facultyId }] },
+        { $set: updates },
+        { returnDocument: "after" }
+      ).lean();
       if (!faculty) return res.status(404).json({ error: "Faculty not found" });
 
       // Update enrolled students as well
@@ -1656,7 +1804,7 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
           student.experiments[expIdx].signedOffBy = directFacultyId;
           student.experiments[expIdx].status = "Approved";
           student.experiments[expIdx].score = 10;
-          student.experiments[expIdx].submittedAt = student.experiments[expIdx].submittedAt || today;
+          student.experiments[expIdx].submittedAt = today;
           student.experiments[expIdx].remarks = student.experiments[expIdx].remarks || "Observation Verified";
         } else {
           student.experiments.push({
@@ -1693,7 +1841,7 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
           student.assignments[asgIdx].gradedBy = directFacultyId;
           student.assignments[asgIdx].status = "Graded";
           student.assignments[asgIdx].score = 10;
-          student.assignments[asgIdx].submittedAt = student.assignments[asgIdx].submittedAt || today;
+          student.assignments[asgIdx].submittedAt = today;
           student.assignments[asgIdx].remarks = student.assignments[asgIdx].remarks || "Record Graded";
         } else {
           student.assignments.push({
@@ -1834,7 +1982,7 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
           if (observationMarks !== undefined || observationStatus !== undefined) {
             student.experiments[expIdx].score = score;
           }
-          student.experiments[expIdx].submittedAt = student.experiments[expIdx].submittedAt || today;
+          student.experiments[expIdx].submittedAt = today;
           student.experiments[expIdx].submittedAtTime = formattedTime12;
           student.experiments[expIdx].isLateFacultySubmission = isLateFacultySubmission;
           student.experiments[expIdx].facultySubmissionTimingStatus = facultySubmissionTimingStatus;
@@ -1877,7 +2025,7 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
           student.assignments[asgIdx].subjectCode = activeSubjectCode;
           student.assignments[asgIdx].subjectName = activeSubjectName;
           student.assignments[asgIdx].status = status;
-          student.assignments[asgIdx].submittedAt = student.assignments[asgIdx].submittedAt || today;
+          student.assignments[asgIdx].submittedAt = today;
         } else {
           student.assignments.push({
             id: asgId,
@@ -1948,6 +2096,159 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
   });
 
   // ===========================================================================
+  // ACADEMIC: UPDATE BATCH SIGNOFF & MARKS
+  // ===========================================================================
+  app.post("/api/academic/evaluation/update-signoff/batch", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const { items, subjectCode, subjectName } = req.body;
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ error: "Missing or invalid items array" });
+      }
+
+      const faculty: any = await (FacultyModel as any).findOne({
+        $or: [{ id: req.user?.id }, { email: req.user?.email }]
+      }).lean();
+
+      const activeSubjectCode = subjectCode || faculty?.subjectCode || "";
+      const activeSubjectName = subjectName || faculty?.subjectName || (Array.isArray(faculty?.subjectsHandled) && faculty?.subjectsHandled[0]) || "";
+      const facultyId = faculty?.id || req.user?.id || "";
+      const subjectKey = buildSubjectKey(faculty?.id, faculty?.email || req.user?.email, activeSubjectCode, activeSubjectName);
+
+      const today = new Date().toISOString().split("T")[0];
+
+      // Prepare college hours timings once
+      const now = new Date();
+      const formattedTime12 = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      const currentHour = now.getHours();
+      const currentMin = now.getMinutes();
+      const totalMinutes = currentHour * 60 + currentMin;
+
+      for (const item of items) {
+        const { studentId, experimentIndex, observationStatus, observationMarks, recordStatus } = item;
+        if (!studentId || experimentIndex === undefined) continue;
+
+        const expId = `exp-${subjectKey}-${experimentIndex}`;
+        const asgId = `asg-${subjectKey}-${experimentIndex}`;
+        const legacyExpId = `exp-${experimentIndex}`;
+        const legacyAsgId = `asg-${experimentIndex}`;
+
+        const student = await (StudentModel as any).findOne({ id: studentId });
+        if (!student) continue;
+
+        const isHasFMark = typeof observationMarks === 'string' && (observationMarks.toUpperCase().startsWith('F/') || observationMarks.toUpperCase().startsWith('F-'));
+        const isAfter330PM = totalMinutes > 930 || totalMinutes < 480 || isHasFMark;
+        const isLateFacultySubmission = isAfter330PM;
+        const facultySubmissionTimingStatus = isLateFacultySubmission ? "Late Submission (After 3:30 PM)" : "On-Time (8:00 AM - 3:30 PM)";
+
+        let score: any = "";
+        if (observationMarks !== undefined && observationMarks !== "") {
+          score = isNaN(Number(observationMarks)) ? observationMarks : Number(observationMarks);
+        } else if (observationStatus === "absent") {
+          score = "A";
+        } else if (observationStatus === "od") {
+          score = "OD";
+        }
+
+        // 1. Update Observation
+        if (observationStatus !== undefined || observationMarks !== undefined) {
+          let expIdx = student.experiments.findIndex((e: any) => e.id === expId);
+          if (expIdx < 0) {
+            expIdx = student.experiments.findIndex((e: any) => e.id === legacyExpId && (e.subjectCode === activeSubjectCode || e.subjectName === activeSubjectName));
+          }
+
+          let status = "Not Submitted";
+          if (observationStatus === "tick") status = "Approved";
+          else if (observationStatus === "cross") status = "Rejected";
+          else if (observationStatus === "absent") status = "Absent";
+          else if (observationStatus === "od") status = "On Duty";
+
+          if (expIdx >= 0) {
+            const exp = student.experiments[expIdx];
+            exp.status = status;
+            exp.score = score !== "" ? score : exp.score;
+            exp.submittedAt = today;
+            exp.submittedAtTime = formattedTime12;
+            exp.isLateFacultySubmission = isLateFacultySubmission;
+            exp.facultySubmissionTimingStatus = facultySubmissionTimingStatus;
+            student.markModified("experiments");
+          } else {
+            student.experiments.push({
+              id: expId,
+              name: `Experiment ${experimentIndex}`,
+              status,
+              score: score !== "" ? score : 0,
+              submittedAt: today,
+              submittedAtTime: formattedTime12,
+              isLateFacultySubmission,
+              facultySubmissionTimingStatus,
+              subjectCode: activeSubjectCode,
+              subjectName: activeSubjectName,
+              facultyId,
+            });
+          }
+        }
+
+        // 2. Update Record Signoff
+        if (recordStatus !== undefined) {
+          let asgIdx = student.assignments.findIndex((a: any) => a.id === asgId);
+          if (asgIdx < 0) {
+            asgIdx = student.assignments.findIndex((a: any) => a.id === legacyAsgId && (a.subjectCode === activeSubjectCode || a.subjectName === activeSubjectName));
+          }
+
+          let status = "Not Submitted";
+          if (recordStatus === "tick") status = "Graded";
+          else if (recordStatus === "cross") status = "Pending";
+
+          if (asgIdx >= 0) {
+            student.assignments[asgIdx].status = status;
+            student.markModified("assignments");
+          } else {
+            student.assignments.push({
+              id: asgId,
+              title: `Record Exercise ${experimentIndex}`,
+              status,
+              dueDate: today,
+              subjectCode: activeSubjectCode,
+              subjectName: activeSubjectName,
+              facultyId,
+            });
+          }
+        }
+
+        await student.save();
+
+        // Upsert into LabExperiment collection
+        await (LabExperimentModel as any).findOneAndUpdate(
+          { studentId, facultyId, subjectCode: activeSubjectCode, experimentNumber: experimentIndex },
+          {
+            $set: {
+              studentId,
+              facultyId,
+              subjectCode: activeSubjectCode,
+              subjectName: activeSubjectName,
+              experimentNumber: experimentIndex,
+              name: `Experiment ${experimentIndex}`,
+              status: observationStatus === "tick" ? "Approved" : (observationStatus === "cross" ? "Rejected" : (observationStatus === "absent" ? "Absent" : (observationStatus === "od" ? "On Duty" : "Not Submitted"))),
+              score: observationMarks !== undefined && observationMarks !== "" ? (isNaN(Number(observationMarks)) ? observationMarks : Number(observationMarks)) : (observationStatus === "absent" ? "A" : (observationStatus === "od" ? "OD" : 0)),
+              observationSignoff: observationStatus || "none",
+              recordSignoff: recordStatus || "none",
+              signedOffAt: today,
+              signedOffBy: facultyId,
+            }
+          },
+          { upsert: true }
+        );
+      }
+
+      broadcastRealtimeEvent({ type: "ACADEMIC_DATA_UPDATED", action: "signoff" });
+      res.json({ success: true, students: await getAllStudents() });
+    } catch (err: any) {
+      console.error("Error in batch update-signoff:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ===========================================================================
   // ADMIN / HOD: FACULTY LIVE MONITORING & COMPLIANCE
   // ===========================================================================
   app.get("/api/admin/faculty/:facultyId/monitoring", authMiddleware, requireRole("Admin", "HOD"), async (req: Request, res: Response) => {
@@ -1964,6 +2265,36 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
       const facEmail = (targetFac.email || "").toLowerCase();
       const facIdStr = (targetFac.id || "").toLowerCase();
 
+      // Collect section IDs and section names assigned to this faculty
+      const facSectionIds = new Set<string>();
+      const facSectionNames = new Set<string>();
+      if (targetFac.sectionId) facSectionIds.add(String(targetFac.sectionId).toLowerCase());
+      if (targetFac.section) facSectionNames.add(String(targetFac.section).toLowerCase());
+      if (Array.isArray(targetFac.assignedSectionIds)) {
+        targetFac.assignedSectionIds.forEach((sid: any) => facSectionIds.add(String(sid).toLowerCase()));
+      }
+      if (Array.isArray(targetFac.assignedSectionMappings)) {
+        targetFac.assignedSectionMappings.forEach((m: any) => {
+          if (m.sectionId) facSectionIds.add(String(m.sectionId).toLowerCase());
+        });
+      }
+      if (Array.isArray(targetFac.sectionsHandled)) {
+        targetFac.sectionsHandled.forEach((s: any) => facSectionNames.add(String(s).toLowerCase()));
+      }
+
+      // Collect subject codes and subject names assigned to this faculty
+      const facSubCodes = new Set<string>();
+      const facSubNames = new Set<string>();
+      if (targetFac.subjectCode) facSubCodes.add(String(targetFac.subjectCode).toLowerCase().trim());
+      if (targetFac.subjectName) facSubNames.add(String(targetFac.subjectName).toLowerCase().trim());
+      if (targetFac.labName) facSubNames.add(String(targetFac.labName).toLowerCase().trim());
+      if (Array.isArray(targetFac.assignedSectionMappings)) {
+        targetFac.assignedSectionMappings.forEach((m: any) => {
+          if (m.subjectCode) facSubCodes.add(String(m.subjectCode).toLowerCase().trim());
+          if (m.subjectName) facSubNames.add(String(m.subjectName).toLowerCase().trim());
+        });
+      }
+
       // Fetch all students
       const allStudents: any[] = await (StudentModel as any).find({}).lean();
 
@@ -1973,50 +2304,131 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
       const lateLogs: any[] = [];
       const allLogs: any[] = [];
 
+      const isStudentAssigned = (st: any) => {
+        // Enforce current section matching if faculty has assigned sections
+        if (facSectionIds.size > 0 || facSectionNames.size > 0) {
+          const sSecId = String(st.sectionId || '').toLowerCase();
+          const sSecName = String(st.section || st.sectionName || '').toLowerCase();
+          const inSecId = sSecId && facSectionIds.has(sSecId);
+          const inSecName = sSecName && facSectionNames.has(sSecName);
+          const inSecPartial = facSectionNames.size > 0 && Array.from(facSectionNames).some(sec => sSecName === sec || sSecName.endsWith(sec) || sec.endsWith(sSecName));
+
+          if (!inSecId && !inSecName && !inSecPartial) {
+            return false; // Exclude student if their section was removed/unassigned from this faculty
+          }
+        }
+
+        if (st.facultyId && (st.facultyId.toLowerCase() === facIdStr || st.facultyId.toLowerCase() === facEmail)) return true;
+        if (st.facultyEmail && st.facultyEmail.toLowerCase() === facEmail) return true;
+        return true;
+      };
+
+      const doesExpMatchFacultySubject = (exp: any) => {
+        const expSubCode = String(exp.subjectCode || exp.code || '').toLowerCase().trim();
+        const expSubName = String(exp.subjectName || exp.name || '').toLowerCase().trim();
+
+        if (expSubCode && facSubCodes.has(expSubCode)) return true;
+        if (expSubName && facSubNames.has(expSubName)) return true;
+        if (facSubCodes.size > 0 && Array.from(facSubCodes).some(code => expSubCode && (expSubCode.includes(code) || code.includes(expSubCode)))) return true;
+        if (facSubNames.size > 0 && Array.from(facSubNames).some(name => expSubName && (expSubName.includes(name) || name.includes(expSubName)))) return true;
+        return false;
+      };
+
+      const doesExpBelongToFaculty = (exp: any, studentAssigned: boolean) => {
+        if (!studentAssigned) return false;
+
+        const facMatches =
+          (exp.signedOffBy && (exp.signedOffBy.toLowerCase() === facIdStr || exp.signedOffBy.toLowerCase() === facEmail)) ||
+          (exp.facultyId && (exp.facultyId.toLowerCase() === facIdStr || exp.facultyId.toLowerCase() === facEmail)) ||
+          (exp.facultyEmail && exp.facultyEmail.toLowerCase() === facEmail);
+
+        if (facMatches) return true;
+
+        if (facSubCodes.size > 0 || facSubNames.size > 0) {
+          return doesExpMatchFacultySubject(exp);
+        }
+
+        return true;
+      };
+
+      const assignedStudentsList: any[] = [];
+
       allStudents.forEach((st: any) => {
+        const studentAssigned = isStudentAssigned(st);
+        const facultyMatchingExps: any[] = [];
+
         (st.experiments || []).forEach((exp: any) => {
-          const facMatches =
-            (exp.signedOffBy && (exp.signedOffBy.toLowerCase() === facIdStr || exp.signedOffBy.toLowerCase() === facEmail)) ||
-            (exp.facultyId && (exp.facultyId.toLowerCase() === facIdStr || exp.facultyId.toLowerCase() === facEmail)) ||
-            (targetFac.subjectCode && exp.subjectCode && exp.subjectCode.toLowerCase() === targetFac.subjectCode.toLowerCase());
+          const isBelonging = doesExpBelongToFaculty(exp, studentAssigned);
 
-          if (facMatches && (exp.status === 'Approved' || exp.status === 'Absent' || (exp.score !== undefined && exp.score !== 0))) {
-            totalEvaluations++;
+          if (isBelonging) {
+            facultyMatchingExps.push(exp);
 
-            const isLate = exp.isLateFacultySubmission === true;
-            if (isLate) {
-              lateCount++;
-              lateLogs.push({
+            if (exp.status === 'Approved' || exp.status === 'Absent' || (exp.score !== undefined && exp.score !== 0 && exp.score !== '')) {
+              totalEvaluations++;
+
+              const isLate = exp.isLateFacultySubmission === true;
+              if (isLate) {
+                lateCount++;
+                lateLogs.push({
+                  studentId: st.id,
+                  studentName: st.name,
+                  rollNo: st.rollNo,
+                  registerNo: st.registerNo || '-',
+                  batchId: st.batchId || '',
+                  batchName: st.batch || st.batchName || '',
+                  sectionId: st.sectionId || '',
+                  sectionName: st.section || st.sectionName || 'A',
+                  section: st.section || targetFac.sectionsHandled?.[0] || 'A',
+                  experimentName: exp.name || `Experiment ${exp.experimentNumber || 1}`,
+                  subjectCode: exp.subjectCode || targetFac.subjectCode || '-',
+                  subjectName: exp.subjectName || targetFac.subjectName || '-',
+                  date: exp.submittedAt || getLocalDateString(),
+                  submittedAtTime: exp.submittedAtTime || 'After 3:30 PM',
+                  score: exp.score !== undefined ? exp.score : '-',
+                  status: exp.status || 'Approved',
+                  timingStatus: exp.facultySubmissionTimingStatus || 'Late Submission (After 3:30 PM)'
+                });
+              } else {
+                onTimeCount++;
+              }
+
+              allLogs.push({
                 studentId: st.id,
                 studentName: st.name,
                 rollNo: st.rollNo,
                 registerNo: st.registerNo || '-',
-                section: st.section || targetFac.sectionsHandled?.[0] || 'A',
+                batchId: st.batchId || '',
+                batchName: st.batch || st.batchName || '',
+                sectionId: st.sectionId || '',
+                sectionName: st.section || st.sectionName || 'A',
                 experimentName: exp.name || `Experiment ${exp.experimentNumber || 1}`,
                 subjectCode: exp.subjectCode || targetFac.subjectCode || '-',
                 subjectName: exp.subjectName || targetFac.subjectName || '-',
                 date: exp.submittedAt || getLocalDateString(),
-                submittedAtTime: exp.submittedAtTime || 'After 3:30 PM',
+                submittedAtTime: exp.submittedAtTime || 'During Class (8:00 AM - 3:30 PM)',
                 score: exp.score !== undefined ? exp.score : '-',
-                status: exp.status || 'Approved',
-                timingStatus: exp.facultySubmissionTimingStatus || 'Late Submission (After 3:30 PM)'
+                isLate
               });
-            } else {
-              onTimeCount++;
             }
-
-            allLogs.push({
-              studentId: st.id,
-              studentName: st.name,
-              rollNo: st.rollNo,
-              experimentName: exp.name || `Experiment ${exp.experimentNumber || 1}`,
-              date: exp.submittedAt || getLocalDateString(),
-              submittedAtTime: exp.submittedAtTime || 'During Class (8:00 AM - 3:30 PM)',
-              score: exp.score !== undefined ? exp.score : '-',
-              isLate
-            });
           }
         });
+
+        if (studentAssigned || facultyMatchingExps.length > 0) {
+          assignedStudentsList.push({
+            id: st.id,
+            name: st.name,
+            rollNo: st.rollNo,
+            registerNo: st.registerNo || '-',
+            batchId: st.batchId || '',
+            batchName: st.batch || st.batchName || '',
+            sectionId: st.sectionId || '',
+            sectionName: st.section || st.sectionName || 'A',
+            attendance: st.attendance ?? 0,
+            attendanceHistory: st.attendanceHistory || [],
+            experiments: facultyMatchingExps,
+            assignments: st.assignments || []
+          });
+        }
       });
 
       const complianceRate = totalEvaluations > 0 ? Math.round((onTimeCount / totalEvaluations) * 100) : 100;
@@ -2034,14 +2446,16 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
           batchId: targetFac.batchId
         },
         summary: {
+          totalAssignedStudents: assignedStudentsList.length,
           totalEvaluations,
           onTimeCount,
           lateCount,
           complianceRate,
           collegeHours: "8:00 AM – 3:30 PM"
         },
+        assignedStudents: assignedStudentsList,
         lateLogs,
-        allLogs: allLogs.slice(0, 50)
+        allLogs
       });
     } catch (err: any) {
       console.error("Error in faculty monitoring:", err);
@@ -2252,6 +2666,16 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
         { returnDocument: "after" }
       ).lean();
       if (!updated) return res.status(404).json({ error: "Batch not found" });
+
+      // Sync student batch properties
+      const bFilter = mongoose.isValidObjectId(batchId)
+        ? { $or: [{ batchId: updated.id }, { batchId: updated._id.toString() }] }
+        : { batchId: updated.id };
+      await (StudentModel as any).updateMany(
+        bFilter,
+        { $set: { batch: updated.name, department: updated.department } }
+      );
+
       res.json({ success: true, batch: updated });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -2267,39 +2691,73 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
         : { id: batchId };
 
       const batchDoc: any = await (BatchModel as any).findOne(filter).lean();
-      const batchName = batchDoc?.name || "";
+      if (!batchDoc) {
+        return res.status(404).json({ error: "Batch not found" });
+      }
 
-      const childSections = await (SectionModel as any).find({ $or: [{ batchId }, { batchId: batchId }] }).lean();
-      const childSectionIds = childSections.map((s: any) => s.id);
-      const childSectionNames = childSections.map((s: any) => s.name);
+      const targetBatchId = batchDoc.id;
+      const targetBatchMongoId = batchDoc._id ? batchDoc._id.toString() : "";
+      const batchName = batchDoc.name || "";
+      const batchIdKeys = Array.from(new Set([targetBatchId, targetBatchMongoId, batchId].filter(Boolean)));
 
-      await (BatchModel as any).deleteOne(filter);
-      await (SectionModel as any).deleteMany({ $or: [{ batchId }, { batchId: batchId }] });
-      await (StudentModel as any).deleteMany({
-        $or: [
-          { batchId },
-          ...(batchName ? [{ batch: batchName }] : []),
-          ...(childSectionIds.length > 0 ? [{ sectionId: { $in: childSectionIds } }] : []),
-          ...(childSectionNames.length > 0 ? [{ section: { $in: childSectionNames } }] : [])
-        ]
+      // Retrieve child sections specifically belonging to this batch
+      const childSections = await (SectionModel as any).find({ batchId: { $in: batchIdKeys } }).lean();
+      const childSectionIds: string[] = [];
+      childSections.forEach((s: any) => {
+        if (s.id) childSectionIds.push(s.id);
+        if (s._id) childSectionIds.push(s._id.toString());
       });
+      const uniqueChildSectionIds = Array.from(new Set(childSectionIds));
+
+      // 1. Delete ONLY the target batch entity itself
+      await (BatchModel as any).deleteOne({ _id: batchDoc._id });
+
+      // 2. Unlink child sections of this batch (preserve section records)
+      await (SectionModel as any).updateMany(
+        { batchId: { $in: batchIdKeys } },
+        { $set: { batchId: "" } }
+      );
+
+      // 3. Unlink students belonging to this batch (preserve student profiles & records)
+      const studentFilter: any[] = [
+        { batchId: { $in: batchIdKeys } },
+      ];
+      if (uniqueChildSectionIds.length > 0) {
+        studentFilter.push({ sectionId: { $in: uniqueChildSectionIds } });
+      }
+      if (batchName) {
+        studentFilter.push({ batch: batchName });
+      }
+
+      await (StudentModel as any).updateMany(
+        { $or: studentFilter },
+        { $set: { batchId: "", batch: "" } }
+      );
+
+      // 4. Unlink faculty assigned to this batch
+      const facultyFilter: any[] = [
+        { batchId: { $in: batchIdKeys } }
+      ];
+      if (uniqueChildSectionIds.length > 0) {
+        facultyFilter.push({ sectionId: { $in: uniqueChildSectionIds } });
+        facultyFilter.push({ assignedSectionIds: { $in: uniqueChildSectionIds } });
+      }
+      if (batchName) {
+        facultyFilter.push({ batch: batchName });
+      }
+
       await (FacultyModel as any).updateMany(
-        {
-          $or: [
-            { batchId },
-            ...(batchName ? [{ batch: batchName }] : []),
-            ...(childSectionIds.length > 0 ? [{ sectionId: { $in: childSectionIds } }] : [])
-          ]
-        },
+        { $or: facultyFilter },
         {
           $set: { sectionId: "", section: "", batchId: "", batch: "" },
-          $pull: { assignedSectionIds: { $in: childSectionIds } }
+          $pull: { assignedSectionIds: { $in: uniqueChildSectionIds } }
         }
       );
 
-      const [allSections, allBatches, allFaculties, allStudents] = await Promise.all([
-        (SectionModel as any).find({}).lean(),
-        (BatchModel as any).find({}).lean(),
+      const allBatches = await (BatchModel as any).find({}).lean();
+      const activeBatchIds = allBatches.map((b: any) => b.id);
+      const [allSections, allFaculties, allStudents] = await Promise.all([
+        (SectionModel as any).find({ batchId: { $in: activeBatchIds } }).lean(),
         getAllFaculties(),
         getAllStudents()
       ]);
@@ -2350,6 +2808,16 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
         { returnDocument: "after" }
       ).lean();
       if (!updated) return res.status(404).json({ error: "Section not found" });
+
+      // Sync student section properties
+      const sFilter = mongoose.isValidObjectId(sectionId)
+        ? { $or: [{ sectionId: updated.id }, { sectionId: updated._id.toString() }] }
+        : { sectionId: updated.id };
+      await (StudentModel as any).updateMany(
+        sFilter,
+        { $set: { section: updated.name } }
+      );
+
       res.json({ success: true, section: updated });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -2365,34 +2833,42 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
         : { id: sectionId };
 
       const sectionDoc: any = await (SectionModel as any).findOne(filter).lean();
-      const secName = sectionDoc?.name || "";
+      if (!sectionDoc) {
+        return res.status(404).json({ error: "Section not found" });
+      }
 
-      await (SectionModel as any).deleteOne(filter);
+      const targetSecId = sectionDoc.id;
+      const targetSecMongoId = sectionDoc._id ? sectionDoc._id.toString() : "";
+      const secIdKeys = Array.from(new Set([targetSecId, targetSecMongoId, sectionId].filter(Boolean)));
 
-      await (StudentModel as any).deleteMany({
-        $or: [
-          { sectionId },
-          ...(secName ? [{ section: secName }] : [])
-        ]
-      });
+      await (SectionModel as any).deleteOne({ _id: sectionDoc._id });
+
+      const studentSecFilter: any[] = [
+        { sectionId: { $in: secIdKeys } }
+      ];
+      if (sectionDoc.batchId && sectionDoc.name) {
+        studentSecFilter.push({ batchId: sectionDoc.batchId, section: sectionDoc.name });
+      }
+
+      await (StudentModel as any).deleteMany({ $or: studentSecFilter });
 
       await (FacultyModel as any).updateMany(
         {
           $or: [
-            { sectionId },
-            ...(secName ? [{ section: secName }] : []),
-            { assignedSectionIds: sectionId }
+            { sectionId: { $in: secIdKeys } },
+            { assignedSectionIds: { $in: secIdKeys } }
           ]
         },
         {
           $set: { sectionId: "", section: "", batchId: "", batch: "" },
-          $pull: { assignedSectionIds: sectionId }
+          $pull: { assignedSectionIds: { $in: secIdKeys } }
         }
       );
 
-      const [allSections, allBatches, allFaculties, allStudents] = await Promise.all([
-        (SectionModel as any).find({}).lean(),
-        (BatchModel as any).find({}).lean(),
+      const allBatches = await (BatchModel as any).find({}).lean();
+      const activeBatchIds = allBatches.map((b: any) => b.id);
+      const [allSections, allFaculties, allStudents] = await Promise.all([
+        (SectionModel as any).find({ batchId: { $in: activeBatchIds } }).lean(),
         getAllFaculties(),
         getAllStudents()
       ]);
@@ -2407,15 +2883,17 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
         return res.status(403).json({ error: "Unauthorized" });
       }
       const { sectionId } = req.params;
-      const { semester } = req.body;
-      if (!semester) return res.status(400).json({ error: "Semester is required" });
+      const { semester, year } = req.body;
+      const updates: any = {};
+      if (semester) updates.semester = semester;
+      if (year) updates.year = year;
 
       await (StudentModel as any).updateMany(
         { sectionId },
-        { $set: { semester } }
+        { $set: updates }
       );
       const students = await (StudentModel as any).find({ sectionId }).lean();
-      res.json({ success: true, semester, students });
+      res.json({ success: true, semester, year, students });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
@@ -2435,6 +2913,23 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
       res.json({ success: true, semester });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
+
+  app.put("/api/admin/students/:studentId/year", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      if (req.user?.role !== "Admin" && req.user?.role !== "HOD") {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+      const { studentId } = req.params;
+      const { year } = req.body;
+      if (!year) return res.status(400).json({ error: "Year is required" });
+
+      await (StudentModel as any).updateOne(
+        { $or: [{ id: studentId }, { _id: mongoose.isValidObjectId(studentId) ? studentId : null }] },
+        { $set: { year } }
+      );
+      res.json({ success: true, year });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
   app.post("/api/admin/sections/:sectionId/timetable", authMiddleware, async (req, res) => {
     try {
       const section = await (SectionModel as any).findOneAndUpdate(
@@ -2452,18 +2947,14 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
         return res.status(403).json({ error: "Unauthorized" });
       }
       const facultyId = req.params.id;
-      const { batchId, sectionId, subjectName, subjectCode, labName } = req.body;
+      const { batchId, sectionId, sectionIds, subjectName, subjectCode, labName, sectionMappings } = req.body;
 
       const lowerId = String(facultyId).toLowerCase();
       const filter = mongoose.isValidObjectId(facultyId)
         ? { $or: [{ id: facultyId }, { _id: facultyId }, { email: lowerId }] }
         : { $or: [{ id: facultyId }, { email: lowerId }] };
 
-      let secDoc: any = null;
       let batchDoc: any = null;
-      if (sectionId) {
-        secDoc = await (SectionModel as any).findOne({ $or: [{ id: sectionId }, { _id: mongoose.isValidObjectId(sectionId) ? sectionId : null }] }).lean();
-      }
       if (batchId) {
         batchDoc = await (BatchModel as any).findOne({ $or: [{ id: batchId }, { _id: mongoose.isValidObjectId(batchId) ? batchId : null }] }).lean();
       }
@@ -2471,19 +2962,87 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
       const updates: any = {};
       if (batchId !== undefined) updates.batchId = batchId;
       if (batchDoc) updates.batch = batchDoc.name;
-      if (sectionId !== undefined) {
-        updates.sectionId = sectionId;
-        if (secDoc) {
-          updates.section = secDoc.name;
-          updates.assignedSectionIds = [sectionId];
+
+      if (Array.isArray(sectionMappings)) {
+        updates.assignedSectionMappings = sectionMappings;
+        const mappingSectionIds = sectionMappings.map((m: any) => m.sectionId).filter(Boolean);
+        updates.assignedSectionIds = mappingSectionIds;
+
+        if (mappingSectionIds.length > 0) {
+          const docs = await (SectionModel as any).find({
+            $or: [
+              { id: { $in: mappingSectionIds } },
+              { _id: { $in: mappingSectionIds.filter(id => mongoose.isValidObjectId(id)) } }
+            ]
+          }).lean();
+          const nameMap = new Map(docs.map((d: any) => [d.id, d.name]));
+          const sectionNames = mappingSectionIds.map(id => nameMap.get(id) || id);
+
+          updates.sectionId = mappingSectionIds[0];
+          updates.section = sectionNames[0] || "";
+          updates.sections = sectionNames.join(", ");
+
+          const firstMapping = sectionMappings[0];
+          updates.subjectName = firstMapping?.subjectName || "";
+          updates.subjectsHandled = [firstMapping?.subjectName].filter(Boolean);
+          updates.subjectCode = firstMapping?.subjectCode || "";
+          updates.labName = firstMapping?.labName || "";
+
+          if (!batchId && docs[0]?.batchId) {
+            updates.batchId = docs[0].batchId;
+            const bDoc = await (BatchModel as any).findOne({ id: docs[0].batchId }).lean();
+            if (bDoc) updates.batch = bDoc.name;
+          }
+        } else {
+          updates.assignedSectionIds = [];
+          updates.sectionId = "";
+          updates.section = "";
+          updates.sections = "";
+          updates.subjectName = "";
+          updates.subjectsHandled = [];
+          updates.subjectCode = "";
+          updates.labName = "";
         }
+      } else {
+        let targetSectionIds: string[] = [];
+        if (Array.isArray(sectionIds)) {
+          targetSectionIds = sectionIds;
+        } else if (sectionId) {
+          targetSectionIds = [sectionId];
+        }
+
+        let sectionNames: string[] = [];
+        if (targetSectionIds.length > 0) {
+          const docs = await (SectionModel as any).find({
+            $or: [
+              { id: { $in: targetSectionIds } },
+              { _id: { $in: targetSectionIds.filter(id => mongoose.isValidObjectId(id)) } }
+            ]
+          }).lean();
+          sectionNames = docs.map((d: any) => d.name);
+        }
+
+        if (sectionId !== undefined || sectionIds !== undefined) {
+          if (targetSectionIds.length > 0) {
+            updates.assignedSectionIds = targetSectionIds;
+            updates.sectionId = targetSectionIds[0];
+            updates.section = sectionNames[0] || "";
+            updates.sections = sectionNames.join(", ");
+          } else {
+            updates.assignedSectionIds = [];
+            updates.sectionId = "";
+            updates.section = "";
+            updates.sections = "";
+          }
+        }
+
+        if (subjectName !== undefined) {
+          updates.subjectName = subjectName;
+          updates.subjectsHandled = [subjectName];
+        }
+        if (subjectCode !== undefined) updates.subjectCode = subjectCode;
+        if (labName !== undefined) updates.labName = labName;
       }
-      if (subjectName !== undefined) {
-        updates.subjectName = subjectName;
-        updates.subjectsHandled = [subjectName];
-      }
-      if (subjectCode !== undefined) updates.subjectCode = subjectCode;
-      if (labName !== undefined) updates.labName = labName;
 
       const updated = await (FacultyModel as any).findOneAndUpdate(filter, { $set: updates }, { returnDocument: "after" }).lean();
       if (!updated) return res.status(404).json({ error: "Faculty not found" });
@@ -2709,7 +3268,10 @@ function buildSubjectKey(facId?: string, facEmail?: string, sCode?: string, sNam
       for (const item of studentList) {
         const name = String(item.name || item.studentName || item.NAME || item['Student Name'] || '').trim();
         const registerNo = String(item.registerNo || item.registerNumber || item['REGISTER NUMBER'] || item['Register Number'] || item['Reg No'] || '').trim();
-        const rollNo = String(item.rollNo || item['ROLL NO'] || item['Roll No'] || registerNo).trim();
+        let rollNo = String(item.rollNo || item['ROLL NO'] || item['Roll No'] || registerNo).trim();
+        if (rollNo) {
+          rollNo = rollNo.replace(/\s+/g, '').toUpperCase();
+        }
         const phone = String(item.phone || item.phoneNumber || '').trim();
         const semester = item.semester || "I";
 

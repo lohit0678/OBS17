@@ -8,6 +8,13 @@ import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 import { fileURLToPath } from "url";
 import path from "path";
+import dns from "dns";
+
+try {
+  dns.setServers(["8.8.8.8", "1.1.1.1"]);
+} catch (err) {
+  console.warn("[reset-admin] Could not set custom DNS servers:", err);
+}
 
 dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), ".env") });
 
@@ -25,21 +32,28 @@ async function resetAdmins() {
   await mongoose.connect(MONGODB_URI);
   console.log("[reset-admin] Connected!");
 
-  const DEFAULT_PASSWORD = "Hod@Admin123";
-  const hashed = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+  // Remove old super admins
+  await AdminModel.deleteMany({});
 
-  for (const username of ["admin", "hod@college.edu"]) {
-    const result = await AdminModel.findOneAndUpdate(
-      { username },
-      { $set: { username, password: hashed } },
-      { upsert: true, returnDocument: 'after' }
-    );
+  const ACCOUNTS = [
+    { username: "admin@pec", password: "adminpec@123" },
+    { username: "admin@pec.in", password: "adminds@123" },
+    { username: "aidshod@pec.in", password: "hodpec@123" }
+  ];
+
+  for (const acc of ACCOUNTS) {
+    const hashedPassword = await bcrypt.hash(acc.password, 10);
+    const result = await AdminModel.create({
+      username: acc.username,
+      password: hashedPassword
+    });
     console.log(`[reset-admin] ✅ Account ready: ${result.username}`);
   }
 
-  console.log("\n✅ Both HOD admin accounts reset successfully!");
-  console.log("   Username: admin          | Password: Hod@Admin123");
-  console.log("   Username: hod@college.edu | Password: Hod@Admin123");
+  console.log("\n✅ Admin and HOD accounts initialized successfully!");
+  console.log("   Username: admin@pec      | Password: adminpec@123");
+  console.log("   Username: admin@pec.in   | Password: adminds@123");
+  console.log("   Username: aidshod@pec.in | Password: hodpec@123");
   await mongoose.disconnect();
   process.exit(0);
 }

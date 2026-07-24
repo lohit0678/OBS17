@@ -86,6 +86,7 @@ export interface Student {
   rollNo: string;
   department: string;
   semester: string;
+  year: string;
   section: string;
   phone: string;
   parentName: string;
